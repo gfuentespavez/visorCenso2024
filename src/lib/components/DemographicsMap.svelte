@@ -88,8 +88,8 @@
             type: 'fill',
             source: 'parcels',
             paint: {
-                'fill-color': '#F5F2F2',
-                'fill-opacity': 0.2
+                'fill-color': '#213C51',
+                'fill-opacity': 0.3
             }
         });
 
