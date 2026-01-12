@@ -41,7 +41,7 @@
                 on:click={clearCircle}
                 disabled={!$isLensActive}
         >
-            Clear Circle
+            Borrar selección
         </button>
 
         <button
