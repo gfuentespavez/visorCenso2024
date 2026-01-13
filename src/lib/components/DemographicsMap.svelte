@@ -1,4 +1,3 @@
-//DemographicsMap.svelte
 <script>
     import { onMount, onDestroy } from 'svelte';
     import { PUBLIC_MAPBOX_TOKEN } from '$env/static/public';
@@ -11,17 +10,21 @@
         selectedFeatures,
         showParcels,
         showDensity,
-        totalPopulation
+        totalPopulation,
+        selectedRadiusRing,
+        visualizationMode,
+        activeHeatmapVariable
     } from '$lib/stores/lensStore.js';
 
     export let parcelsData = null;
-    export let searchLocation = null; // { lng, lat, name } from address search
+    export let searchLocation = null; // { lng, lat, name, type, bounds } from address search
 
     let mapContainer;
     let map;
     let mapReady = false;
     let addressMode = false; // When true, lens is disabled, showing radius rings
     let lensLocked = false; // When true, lens stays fixed until clicked again
+    let selectedRing = null; // 'r500', 'r1k', or 'r3k'
 
     // Throttle function for performance
     function throttle(func, limit) {
@@ -41,8 +44,6 @@
         map = new mapboxgl.Map({
             container: mapContainer,
             style: 'mapbox://styles/mapbox/dark-v11',
-            //style: 'mapbox://styles/mapbox/light-v10',
-            //style: 'mapbox://styles/mapbox/navigation-night-v1',
             center: [-73.05, -36.82], // Concepción
             zoom: 13,
             antialias: true
@@ -77,7 +78,40 @@
     });
 
     function setupLayers() {
-        // Parcels source (all parcels - dimmed background)
+        // === HEATMAP LAYER (for thematic visualization) ===
+        map.addSource('heatmap-parcels', {
+            type: 'geojson',
+            data: turf.featureCollection([])
+        });
+
+        map.addLayer({
+            id: 'heatmap-fill',
+            type: 'fill',
+            source: 'heatmap-parcels',
+            paint: {
+                'fill-color': '#ff6b6b', // Solid red color for dominant areas
+                'fill-opacity': 0.75
+            },
+            layout: {
+                'visibility': 'none'
+            }
+        });
+
+        map.addLayer({
+            id: 'heatmap-outline',
+            type: 'line',
+            source: 'heatmap-parcels',
+            paint: {
+                'line-color': '#ff4757',
+                'line-width': 1,
+                'line-opacity': 0.9
+            },
+            layout: {
+                'visibility': 'none'
+            }
+        });
+
+        // === PARCELS SOURCE (all parcels - dimmed background) ===
         map.addSource('parcels', {
             type: 'geojson',
             data: turf.featureCollection([])
@@ -104,7 +138,7 @@
             }
         });
 
-        // Selected parcels (highlighted within lens)
+        // === SELECTED PARCELS (highlighted within lens) ===
         map.addSource('parcels-selected', {
             type: 'geojson',
             data: turf.featureCollection([])
@@ -141,7 +175,7 @@
             }
         });
 
-        // Lens circle
+        // === LENS CIRCLE ===
         map.addSource('lens-circle', {
             type: 'geojson',
             data: turf.featureCollection([])
@@ -168,7 +202,7 @@
             }
         });
 
-        // Lens center point
+        // === LENS CENTER POINT ===
         map.addSource('lens-center', {
             type: 'geojson',
             data: turf.featureCollection([])
@@ -186,7 +220,8 @@
             }
         });
 
-        // Address search radius rings (3km, 1km, 500m - added in this order so smaller ones render on top)
+        // === ADDRESS SEARCH RADIUS RINGS (3km, 1km, 500m) ===
+        // 3km ring
         map.addSource('radius-3km', {
             type: 'geojson',
             data: turf.featureCollection([])
@@ -213,6 +248,7 @@
             }
         });
 
+        // 1km ring
         map.addSource('radius-1km', {
             type: 'geojson',
             data: turf.featureCollection([])
@@ -239,6 +275,7 @@
             }
         });
 
+        // 500m ring
         map.addSource('radius-500m', {
             type: 'geojson',
             data: turf.featureCollection([])
@@ -265,7 +302,7 @@
             }
         });
 
-        // Address marker
+        // === ADDRESS MARKER ===
         map.addSource('address-marker', {
             type: 'geojson',
             data: turf.featureCollection([])
@@ -282,6 +319,169 @@
                 'circle-stroke-color': '#ffffff'
             }
         });
+
+        // === CLICKABLE RADIUS RINGS EVENT LISTENERS ===
+        setupRingInteractions();
+    }
+
+    function setupRingInteractions() {
+        // 500m ring
+        map.on('click', 'radius-500m-fill', (e) => {
+            e.originalEvent.stopPropagation();
+            handleRingClick('r500');
+        });
+        map.on('mouseenter', 'radius-500m-fill', () => {
+            map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', 'radius-500m-fill', () => {
+            map.getCanvas().style.cursor = '';
+        });
+
+        // 1km ring
+        map.on('click', 'radius-1km-fill', (e) => {
+            e.originalEvent.stopPropagation();
+            handleRingClick('r1k');
+        });
+        map.on('mouseenter', 'radius-1km-fill', () => {
+            map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', 'radius-1km-fill', () => {
+            map.getCanvas().style.cursor = '';
+        });
+
+        // 3km ring
+        map.on('click', 'radius-3km-fill', (e) => {
+            e.originalEvent.stopPropagation();
+            handleRingClick('r3k');
+        });
+        map.on('mouseenter', 'radius-3km-fill', () => {
+            map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', 'radius-3km-fill', () => {
+            map.getCanvas().style.cursor = '';
+        });
+    }
+
+    function handleRingClick(ring) {
+        if (!addressMode || !searchLocation) {
+            console.log('Ring click ignored: not in address mode');
+            return;
+        }
+
+        console.log(`Ring clicked: ${ring}, current: ${selectedRing}`);
+
+        // Toggle selection: if clicking the same ring, deselect it
+        selectedRing = selectedRing === ring ? null : ring;
+        selectedRadiusRing.set(selectedRing);
+
+        console.log(`New selected ring: ${selectedRing}`);
+
+        // Use VISIBILITY instead of opacity for dramatic effect
+        try {
+            if (selectedRing === null) {
+                // Show all rings
+                map.setLayoutProperty('radius-500m-fill', 'visibility', 'visible');
+                map.setLayoutProperty('radius-500m-line', 'visibility', 'visible');
+                map.setLayoutProperty('radius-1km-fill', 'visibility', 'visible');
+                map.setLayoutProperty('radius-1km-line', 'visibility', 'visible');
+                map.setLayoutProperty('radius-3km-fill', 'visibility', 'visible');
+                map.setLayoutProperty('radius-3km-line', 'visibility', 'visible');
+
+                // Reset line widths
+                map.setPaintProperty('radius-500m-line', 'line-width', 2.5);
+                map.setPaintProperty('radius-1km-line', 'line-width', 2);
+                map.setPaintProperty('radius-3km-line', 'line-width', 2);
+
+                console.log('All rings visible');
+            } else if (selectedRing === 'r500') {
+                // Show only 500m
+                map.setLayoutProperty('radius-500m-fill', 'visibility', 'visible');
+                map.setLayoutProperty('radius-500m-line', 'visibility', 'visible');
+                map.setLayoutProperty('radius-1km-fill', 'visibility', 'none');
+                map.setLayoutProperty('radius-1km-line', 'visibility', 'none');
+                map.setLayoutProperty('radius-3km-fill', 'visibility', 'none');
+                map.setLayoutProperty('radius-3km-line', 'visibility', 'none');
+
+                map.setPaintProperty('radius-500m-line', 'line-width', 3.5);
+
+                console.log('Only 500m visible');
+            } else if (selectedRing === 'r1k') {
+                // Show only 1km (and 500m for context)
+                map.setLayoutProperty('radius-500m-fill', 'visibility', 'visible');
+                map.setLayoutProperty('radius-500m-line', 'visibility', 'visible');
+                map.setLayoutProperty('radius-1km-fill', 'visibility', 'visible');
+                map.setLayoutProperty('radius-1km-line', 'visibility', 'visible');
+                map.setLayoutProperty('radius-3km-fill', 'visibility', 'none');
+                map.setLayoutProperty('radius-3km-line', 'visibility', 'none');
+
+                map.setPaintProperty('radius-500m-line', 'line-width', 1.5);
+                map.setPaintProperty('radius-1km-line', 'line-width', 3.5);
+
+                console.log('500m + 1km visible');
+            } else if (selectedRing === 'r3k') {
+                // Show all (3km selected means show full context)
+                map.setLayoutProperty('radius-500m-fill', 'visibility', 'visible');
+                map.setLayoutProperty('radius-500m-line', 'visibility', 'visible');
+                map.setLayoutProperty('radius-1km-fill', 'visibility', 'visible');
+                map.setLayoutProperty('radius-1km-line', 'visibility', 'visible');
+                map.setLayoutProperty('radius-3km-fill', 'visibility', 'visible');
+                map.setLayoutProperty('radius-3km-line', 'visibility', 'visible');
+
+                map.setPaintProperty('radius-500m-line', 'line-width', 1.5);
+                map.setPaintProperty('radius-1km-line', 'line-width', 1.5);
+                map.setPaintProperty('radius-3km-line', 'line-width', 3.5);
+
+                console.log('All rings visible, 3km highlighted');
+            }
+        } catch (e) {
+            console.error('Error setting ring visibility:', e);
+        }
+
+        // Update selected features based on ring
+        updateFeaturesForRing();
+    }
+
+    function updateFeaturesForRing() {
+        if (!addressMode || !searchLocation || !parcelsData) {
+            console.log('UpdateFeaturesForRing: conditions not met');
+            return;
+        }
+
+        const { lng, lat } = searchLocation;
+        const point = [lng, lat];
+
+        // Determine radius based on selected ring (default to 3km if none selected)
+        const radius = selectedRing === 'r500' ? 0.5 :
+            selectedRing === 'r1k' ? 1 :
+                selectedRing === 'r3k' ? 3 : 3;
+
+        console.log(`Updating features for radius: ${radius}km`);
+
+        const circle = turf.circle(point, radius, { units: 'kilometers', steps: 64 });
+
+        // Filter features within selected radius
+        const selected = parcelsData.features.filter(feature => {
+            try {
+                const centroid = turf.centroid(feature);
+                return turf.booleanPointInPolygon(centroid, circle);
+            } catch (e) {
+                return false;
+            }
+        });
+
+        console.log(`Found ${selected.length} features within ${radius}km`);
+
+        // Update selected features and map display
+        if (selected.length > 0) {
+            map.getSource('parcels-selected').setData(
+                turf.featureCollection(selected)
+            );
+            selectedFeatures.set(selected);
+        } else {
+            // If no features, clear selection
+            map.getSource('parcels-selected').setData(turf.featureCollection([]));
+            selectedFeatures.set([]);
+        }
     }
 
     function loadParcelsData(data) {
@@ -291,7 +491,7 @@
     }
 
     function handleMouseMove(e) {
-        if (!mapReady || addressMode || lensLocked) return; // Skip if locked
+        if (!mapReady || addressMode || lensLocked || $visualizationMode === 'heatmap') return;
 
         const { lng, lat } = e.lngLat;
 
@@ -299,103 +499,96 @@
         lensCenter.set({ lng, lat });
         isLensActive.set(true);
 
-        // Update lens visualization
         updateLens(lng, lat);
     }
 
     function handleMouseLeave() {
-        if (addressMode || lensLocked) return; // Keep lens if locked
-
-        // Hide lens when cursor leaves map
-        isLensActive.set(false);
-
-        if (map && mapReady) {
-            map.getSource('lens-circle')?.setData(turf.featureCollection([]));
-            map.getSource('lens-center')?.setData(turf.featureCollection([]));
-            map.getSource('parcels-selected')?.setData(turf.featureCollection([]));
+        if (!lensLocked && $visualizationMode !== 'heatmap') {
+            isLensActive.set(false);
+            clearLensVisuals();
         }
-
-        selectedFeatures.set([]);
     }
 
     function handleMouseEnter() {
-        if (addressMode || lensLocked) return; // Stay locked
-        isLensActive.set(true);
+        if (!addressMode && !lensLocked && $visualizationMode !== 'heatmap') {
+            isLensActive.set(true);
+        }
     }
 
     function handleClick(e) {
-        if (addressMode) return; // Don't lock in address mode
+        // Ignore clicks on radius rings (they have their own handlers)
+        if (addressMode) return;
+
+        if ($visualizationMode === 'heatmap') return;
+
+        // Toggle lens lock state
+        lensLocked = !lensLocked;
 
         if (lensLocked) {
-            // Unlock - lens will follow cursor again
-            lensLocked = false;
-        } else {
-            // Lock the lens at current position
-            lensLocked = true;
+            // Lock lens at current position
             const { lng, lat } = e.lngLat;
             lensCenter.set({ lng, lat });
             updateLens(lng, lat);
+        } else {
+            // Unlock lens - will follow cursor again
+            isLensActive.set(true);
         }
     }
 
     function updateLens(lng, lat) {
-        if (!map || !mapReady) return;
+        if (!mapReady || !parcelsData) return;
 
-        // Create lens circle
-        const circle = turf.circle(
-            [lng, lat],
-            $lensRadius,
-            { units: 'kilometers', steps: 64 }
-        );
+        const point = [lng, lat];
+        const radiusKm = $lensRadius;
 
-        // Update lens geometry
+        // Create circle for lens
+        const circle = turf.circle(point, radiusKm, { units: 'kilometers', steps: 64 });
+
+        // Update lens circle visualization
         map.getSource('lens-circle').setData(circle);
-        map.getSource('lens-center').setData(turf.point([lng, lat]));
+        map.getSource('lens-center').setData(turf.point(point));
 
-        // Query parcels within lens
-        queryParcelsInLens(circle);
-    }
-
-    function queryParcelsInLens(lensPolygon) {
-        if (!parcelsData || !parcelsData.features) {
-            selectedFeatures.set([]);
-            return;
-        }
-
+        // Find all manzanas within lens
         const selected = parcelsData.features.filter(feature => {
             try {
                 const centroid = turf.centroid(feature);
-                return turf.booleanPointInPolygon(centroid, lensPolygon);
+                return turf.booleanPointInPolygon(centroid, circle);
             } catch (e) {
                 return false;
             }
         });
 
-        // Update selected parcels layer
-        if (map.getSource('parcels-selected')) {
+        // Update highlighted parcels
+        if (selected.length > 0) {
             map.getSource('parcels-selected').setData(
                 turf.featureCollection(selected)
             );
+            selectedFeatures.set(selected);
+        } else {
+            map.getSource('parcels-selected').setData(turf.featureCollection([]));
+            selectedFeatures.set([]);
         }
-
-        // Update store for sidebar
-        selectedFeatures.set(selected);
     }
 
+    function clearLensVisuals() {
+        if (map && map.getSource('lens-circle')) {
+            map.getSource('lens-circle').setData(turf.featureCollection([]));
+            map.getSource('lens-center').setData(turf.featureCollection([]));
+            map.getSource('parcels-selected').setData(turf.featureCollection([]));
+        }
+    }
+
+    // Public method to clear lens (called from parent)
     export function clearLens() {
         lensLocked = false;
-        handleMouseLeave();
+        isLensActive.set(false);
+        clearLensVisuals();
+        selectedFeatures.set([]);
     }
 
-    // React to parcelsData changes
-    $: if (mapReady && parcelsData && map && map.getSource('parcels')) {
+    // React to parcels data changes
+    $: if (mapReady && map && parcelsData) {
         loadParcelsData(parcelsData);
-    }
-
-    // React to showParcels toggle
-    $: if (mapReady && map && map.getLayer('parcels-fill-dim')) {
-        map.setLayoutProperty('parcels-fill-dim', 'visibility', $showParcels ? 'visible' : 'none');
-        map.setLayoutProperty('parcels-outline-dim', 'visibility', $showParcels ? 'visible' : 'none');
     }
 
     // React to radius changes from slider
@@ -412,12 +605,158 @@
     }
 
     // React to address search location changes
-    $: if (mapReady && map && parcelsData) {
+    $: if (mapReady && map && parcelsData && $visualizationMode !== 'heatmap') {
         updateAddressSearch(searchLocation);
+    }
+
+    // React to visualization mode changes
+    $: if (mapReady && map && parcelsData) {
+        updateVisualizationMode($visualizationMode, $activeHeatmapVariable);
+    }
+
+    function updateVisualizationMode(mode, variable) {
+        if (!map || !parcelsData) return;
+
+        if (mode === 'heatmap' && variable) {
+            // Hide lens and address mode
+            addressMode = false;
+            lensLocked = false;
+            isLensActive.set(false);
+            selectedRing = null;
+            selectedRadiusRing.set(null);
+
+            // Clear all interactive elements
+            map.getSource('lens-circle')?.setData(turf.featureCollection([]));
+            map.getSource('lens-center')?.setData(turf.featureCollection([]));
+            map.getSource('parcels-selected')?.setData(turf.featureCollection([]));
+
+            // Clear radius rings
+            ['radius-500m', 'radius-1km', 'radius-3km', 'address-marker'].forEach(src => {
+                map.getSource(src)?.setData(turf.featureCollection([]));
+            });
+
+            // Show heatmap layers
+            map.setLayoutProperty('heatmap-fill', 'visibility', 'visible');
+            map.setLayoutProperty('heatmap-outline', 'visibility', 'visible');
+
+            // Dim background parcels
+            map.setPaintProperty('parcels-fill-dim', 'fill-opacity', 0.1);
+            map.setPaintProperty('parcels-outline-dim', 'line-opacity', 0.1);
+
+            // Process data for heatmap
+            processHeatmapData(variable);
+        } else {
+            // Hide heatmap
+            if (map.getLayer('heatmap-fill')) {
+                map.setLayoutProperty('heatmap-fill', 'visibility', 'none');
+                map.setLayoutProperty('heatmap-outline', 'visibility', 'none');
+            }
+
+            // Restore normal opacity
+            map.setPaintProperty('parcels-fill-dim', 'fill-opacity', 0.3);
+            map.setPaintProperty('parcels-outline-dim', 'line-opacity', 0.3);
+
+            // Clear heatmap data
+            map.getSource('heatmap-parcels')?.setData(turf.featureCollection([]));
+        }
+    }
+
+    function processHeatmapData(variable) {
+        if (!parcelsData || !variable) return;
+
+        console.log(`Processing heatmap for: ${variable.label}`);
+
+        // Determine which manzanas have this variable as dominant
+        const dominantFeatures = parcelsData.features
+            .map(f => {
+                const props = f.properties;
+                let isDominant = false;
+                let value = 0;
+
+                // Handle calculated fields
+                if (variable.calculated && variable.calculateFn) {
+                    value = variable.calculateFn(props);
+                    isDominant = value > 0;
+                }
+                // Variables with comparison groups (e.g., transport modes, age groups)
+                else if (variable.compareFields && variable.compareFields.length > 0) {
+                    // Get all values from the comparison group
+                    const values = variable.compareFields.map(field => ({
+                        field,
+                        value: props[field] || 0
+                    }));
+
+                    // Find the maximum value in the group
+                    const maxValue = Math.max(...values.map(v => v.value));
+
+                    // Check if our variable has the max value and it's > 0
+                    const ourValue = props[variable.field] || 0;
+                    isDominant = ourValue > 0 && ourValue === maxValue;
+                    value = ourValue;
+                }
+                // Variables without comparison (show if above threshold)
+                else {
+                    const rawValue = props[variable.field] || 0;
+
+                    // Different thresholds based on variable type
+                    if (variable.id === 'jefatura_mujer') {
+                        // Show if >50% of households have female heads
+                        const totalHogares = props.n_hog || 0;
+                        isDominant = totalHogares > 0 && (rawValue / totalHogares) > 0.5;
+                        value = rawValue;
+                    }
+                    else if (variable.id === 'hacinamiento') {
+                        // Show if >30% of housing is overcrowded
+                        const totalViviendas = props.n_vp || 0;
+                        isDominant = totalViviendas > 0 && (rawValue / totalViviendas) > 0.3;
+                        value = rawValue;
+                    }
+                    else if (variable.id === 'desocupacion') {
+                        // Show if unemployment rate >15%
+                        const totalLabor = (props.n_ocupado || 0) + (props.n_desocupado || 0);
+                        isDominant = totalLabor > 0 && (rawValue / totalLabor) > 0.15;
+                        value = rawValue;
+                    }
+                    else {
+                        // For identity variables (inmigrantes, pueblos originarios)
+                        // Show if >20% of population
+                        const totalPop = props.n_per || 0;
+                        isDominant = totalPop > 0 && (rawValue / totalPop) > 0.2;
+                        value = rawValue;
+                    }
+                }
+
+                if (!isDominant) return null;
+
+                // Return feature with normalized intensity based on absolute value
+                return {
+                    ...f,
+                    properties: {
+                        ...props,
+                        value: 0.7, // Fixed intensity for all dominant areas
+                        rawValue: value
+                    }
+                };
+            })
+            .filter(f => f !== null);
+
+        if (dominantFeatures.length > 0) {
+            map.getSource('heatmap-parcels').setData(
+                turf.featureCollection(dominantFeatures)
+            );
+            console.log(`Heatmap: ${dominantFeatures.length} manzanas where "${variable.label}" is dominant`);
+        } else {
+            map.getSource('heatmap-parcels').setData(turf.featureCollection([]));
+            console.log(`Heatmap: No manzanas found where "${variable.label}" is dominant`);
+        }
     }
 
     function updateAddressSearch(location) {
         if (!map) return;
+
+        console.log('=== updateAddressSearch called ===');
+        console.log('Location:', location);
+        console.log('parcelsData:', parcelsData ? `${parcelsData.features.length} features` : 'null');
 
         // Clear radius rings
         const sources = ['radius-500m', 'radius-1km', 'radius-3km', 'address-marker'];
@@ -428,8 +767,11 @@
         });
 
         if (!location || !parcelsData) {
+            console.log('Clearing address mode (no location or no data)');
             // Exit address mode - re-enable lens
             addressMode = false;
+            selectedRing = null;
+            selectedRadiusRing.set(null);
             map.getSource('parcels-selected')?.setData(turf.featureCollection([]));
             map.getSource('lens-circle')?.setData(turf.featureCollection([]));
             map.getSource('lens-center')?.setData(turf.featureCollection([]));
@@ -440,54 +782,142 @@
 
         // Enter address mode - disable lens
         addressMode = true;
+        lensLocked = false;
         isLensActive.set(false);
+
+        console.log('Entering address mode');
 
         // Hide the lens circle
         map.getSource('lens-circle')?.setData(turf.featureCollection([]));
         map.getSource('lens-center')?.setData(turf.featureCollection([]));
 
-        const { lng, lat } = location;
+        const { lng, lat, type, bounds } = location;
         const point = [lng, lat];
 
-        // Create the three radius circles
-        const circle500m = turf.circle(point, 0.5, { units: 'kilometers', steps: 64 });
-        const circle1km = turf.circle(point, 1, { units: 'kilometers', steps: 64 });
-        const circle3km = turf.circle(point, 3, { units: 'kilometers', steps: 64 });
+        console.log(`Type: ${type}, Point: [${lng}, ${lat}]`);
+        if (bounds) console.log('Bounds:', bounds);
 
-        // Update radius ring sources
-        map.getSource('radius-500m').setData(circle500m);
-        map.getSource('radius-1km').setData(circle1km);
-        map.getSource('radius-3km').setData(circle3km);
-        map.getSource('address-marker').setData(turf.point(point));
+        // Only create radius circles for ADDRESS mode, not for COMUNA mode
+        if (type !== 'comuna') {
+            console.log('Creating radius circles for address search');
 
-        // Find all manzanas within 3km
-        const allSelected = parcelsData.features.filter(feature => {
-            try {
-                const centroid = turf.centroid(feature);
-                return turf.booleanPointInPolygon(centroid, circle3km);
-            } catch (e) {
-                return false;
+            // Create the three radius circles
+            const circle500m = turf.circle(point, 0.5, { units: 'kilometers', steps: 64 });
+            const circle1km = turf.circle(point, 1, { units: 'kilometers', steps: 64 });
+            const circle3km = turf.circle(point, 3, { units: 'kilometers', steps: 64 });
+
+            // Update radius ring sources
+            map.getSource('radius-500m').setData(circle500m);
+            map.getSource('radius-1km').setData(circle1km);
+            map.getSource('radius-3km').setData(circle3km);
+            map.getSource('address-marker').setData(turf.point(point));
+
+            // Reset selection state and styles
+            selectedRing = null;
+            selectedRadiusRing.set(null);
+
+            // Reset visibility and line widths to default
+            map.setLayoutProperty('radius-500m-fill', 'visibility', 'visible');
+            map.setLayoutProperty('radius-500m-line', 'visibility', 'visible');
+            map.setLayoutProperty('radius-1km-fill', 'visibility', 'visible');
+            map.setLayoutProperty('radius-1km-line', 'visibility', 'visible');
+            map.setLayoutProperty('radius-3km-fill', 'visibility', 'visible');
+            map.setLayoutProperty('radius-3km-line', 'visibility', 'visible');
+
+            map.setPaintProperty('radius-500m-line', 'line-width', 2.5);
+            map.setPaintProperty('radius-1km-line', 'line-width', 2);
+            map.setPaintProperty('radius-3km-line', 'line-width', 2);
+
+            console.log('Radios created with default styles');
+        } else {
+            console.log('COMUNA mode: hiding radius circles');
+
+            // Hide all radius circles and marker for comuna mode
+            map.getSource('radius-500m').setData(turf.featureCollection([]));
+            map.getSource('radius-1km').setData(turf.featureCollection([]));
+            map.getSource('radius-3km').setData(turf.featureCollection([]));
+            map.getSource('address-marker').setData(turf.featureCollection([]));
+
+            // Reset ring selection
+            selectedRing = null;
+            selectedRadiusRing.set(null);
+        }
+
+        // Find all manzanas within area
+        let allSelected;
+
+        if (type === 'comuna' && location.name) {
+            console.log('=== COMUNA MODE ===');
+            console.log(`Filtering by comuna name: "${location.name}"`);
+
+            // Filter by comuna field in properties
+            allSelected = parcelsData.features.filter(feature => {
+                const comunaName = feature.properties?.comuna;
+                // Case insensitive comparison and handle variations
+                return comunaName && comunaName.toLowerCase().trim() === location.name.toLowerCase().trim();
+            });
+
+            console.log(`Found ${allSelected.length} features in comuna "${location.name}"`);
+
+            // Debug: show unique comunas in results
+            if (allSelected.length > 0) {
+                const uniqueComunas = [...new Set(allSelected.map(f => f.properties?.comuna))];
+                console.log('Comunas found:', uniqueComunas);
+            } else {
+                // If no match, show available comunas for debugging
+                console.warn(`No features found for comuna "${location.name}"`);
+                const availableComunas = [...new Set(parcelsData.features.map(f => f.properties?.comuna))].filter(Boolean).slice(0, 10);
+                console.log('Available comunas (first 10):', availableComunas);
             }
-        });
+        } else {
+            console.log('=== ADDRESS MODE ===');
+            // For address search, use 3km radius
+            allSelected = parcelsData.features.filter(feature => {
+                try {
+                    const centroid = turf.centroid(feature);
+                    return turf.booleanPointInPolygon(centroid, circle3km);
+                } catch (e) {
+                    return false;
+                }
+            });
 
-        // Highlight manzanas within 3km
+            console.log(`Found ${allSelected.length} features within 3km`);
+        }
+
+        // Highlight manzanas
         if (allSelected.length > 0) {
+            console.log('Setting parcels-selected with features');
             map.getSource('parcels-selected').setData(
                 turf.featureCollection(allSelected)
             );
             selectedFeatures.set(allSelected);
+            console.log('✅ selectedFeatures.set() called with', allSelected.length, 'features');
+        } else {
+            console.log('⚠️ No features found, clearing selection');
+            map.getSource('parcels-selected').setData(turf.featureCollection([]));
+            selectedFeatures.set([]);
         }
 
         // Fly to the location
-        map.flyTo({
-            center: point,
-            zoom: 14,
-            duration: 1500
-        });
+        if (type === 'comuna' && bounds) {
+            console.log('Flying to comuna bounds');
+            map.fitBounds(bounds, { padding: 50, duration: 1500 });
+        } else {
+            console.log('Flying to address point');
+            map.flyTo({
+                center: point,
+                zoom: 14,
+                duration: 1500
+            });
+        }
+
+        console.log('=== updateAddressSearch complete ===');
     }
 
     export function clearAddressSearch() {
         addressMode = false;
+        selectedRing = null;
+        selectedRadiusRing.set(null);
     }
 
 </script>
@@ -495,20 +925,22 @@
 <div class="map-wrapper">
     <div bind:this={mapContainer} class="map-container"></div>
 
-    <!-- Population Density Legend -->
-    <div class="map-legend">
-        <div class="legend-title">Población por Manzana</div>
-        <div class="legend-scale">
-            <div class="legend-gradient"></div>
-            <div class="legend-labels">
-                <span>0</span>
-                <span>200</span>
-                <span>400</span>
-                <span>600</span>
-                <span>800+</span>
+    <!-- Population Density Legend (only visible in lens/address mode) -->
+    {#if $visualizationMode !== 'heatmap'}
+        <div class="map-legend">
+            <div class="legend-title">Población por Manzana</div>
+            <div class="legend-scale">
+                <div class="legend-gradient"></div>
+                <div class="legend-labels">
+                    <span>0</span>
+                    <span>200</span>
+                    <span>400</span>
+                    <span>600</span>
+                    <span>800+</span>
+                </div>
             </div>
         </div>
-    </div>
+    {/if}
 </div>
 
 <style>
@@ -560,12 +992,12 @@
     .legend-gradient {
         height: 10px;
         background: linear-gradient(to right,
-            #ffffcc 0%,
-            #ffeda0 10%,
-            #fed976 20%,
-            #feb24c 40%,
-            #fd8d3c 60%,
-            #f03b20 100%
+        #ffffcc 0%,
+        #ffeda0 10%,
+        #fed976 20%,
+        #feb24c 40%,
+        #fd8d3c 60%,
+        #f03b20 100%
         );
         border-radius: 5px;
         border: 1px solid rgba(255,255,255,0.2);
