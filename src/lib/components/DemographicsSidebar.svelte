@@ -10,38 +10,61 @@
         literacyData,
         housingData,
         avgAge,
-        householdData,
-        isLensActive
+        householdData
     } from '$lib/stores/lensStore.js';
     import targetIcon from '$lib/assets/icons/target.svg';
     import houseIcon from '$lib/assets/icons/house.svg';
     import buildingIcon from '$lib/assets/icons/building.svg';
     import checkIcon from '$lib/assets/icons/check.svg';
     import squareIcon from '$lib/assets/icons/square.svg';
+    import peopleIcon from '$lib/assets/icons/people.svg';
+    import briefcaseIcon from '$lib/assets/icons/briefcase.svg';
+    import familyIcon from '$lib/assets/icons/family.svg';
+    import carIcon from '$lib/assets/icons/car-side-svgrepo-com.svg';
+    import flameIcon from '$lib/assets/icons/flame-svgrepo-com.svg';
+    import busIcon from '$lib/assets/icons/bus-svgrepo-com.svg';
+    import walkIcon from '$lib/assets/icons/walk-svgrepo-com.svg';
+    import bikeIcon from '$lib/assets/icons/bike-svgrepo-com.svg';
+    import woodIcon from '$lib/assets/icons/fire-wood-svgrepo-com.svg';
+    import electricityIcon from '$lib/assets/icons/electricity-bill-svgrepo-com.svg';
+    import motorbikeIcon from '$lib/assets/icons/motorbike-motorcycle-scooter-svgrepo-com.svg';
+    import gasIcon from '$lib/assets/icons/gas-burner-svgrepo-com.svg';
 
     // Categories with nested topics
     const categories = [
         {
             id: 'demografia',
             label: 'Demografía',
-            icon: '👥',
+            icon: peopleIcon,
             topics: ['population', 'age-pyramid']
         },
         {
             id: 'socioeconomico',
             label: 'Socioeconómico',
-            icon: '💼',
+            icon: briefcaseIcon,
             topics: ['employment', 'literacy']
         },
         {
             id: 'vivienda',
             label: 'Vivienda y Hogares',
-            icon: '🏠',
+            icon: familyIcon,
             topics: ['housing', 'households']
+        },
+        {
+            id: 'transporte',
+            label: 'Transporte',
+            icon: carIcon,
+            topics: []
+        },
+        {
+            id: 'energia',
+            label: 'Calefacción',
+            icon: flameIcon,
+            topics: []
         }
     ];
 
-    // Track expanded categories
+    // Track expanded categories - demografía expanded by default
     let expandedCategories = { 'demografia': true };
 
     function toggleCategory(catId) {
@@ -58,17 +81,15 @@
         return topic ? topic.label : topicId;
     }
 
-    // Computed data from selectedFeatures for additional metrics
+    // Computed data
     $: migrationData = {
         inmigrantes: $selectedFeatures.reduce((sum, f) => sum + (f.properties?.n_inmigrantes || 0), 0),
-        pueblosOrig: $selectedFeatures.reduce((sum, f) => sum + (f.properties?.n_pueblos_orig || 0), 0),
-        afrodescendencia: $selectedFeatures.reduce((sum, f) => sum + (f.properties?.n_afrodescendencia || 0), 0)
+        pueblosOrig: $selectedFeatures.reduce((sum, f) => sum + (f.properties?.n_pueblos_orig || 0), 0)
     };
 
     $: disabilityData = {
         total: $selectedFeatures.reduce((sum, f) => sum + (f.properties?.n_discapacidad || 0), 0),
         ver: $selectedFeatures.reduce((sum, f) => sum + (f.properties?.n_dificultad_ver || 0), 0),
-        oir: $selectedFeatures.reduce((sum, f) => sum + (f.properties?.n_dificultad_oir || 0), 0),
         mover: $selectedFeatures.reduce((sum, f) => sum + (f.properties?.n_dificultad_mover || 0), 0)
     };
 
@@ -76,11 +97,11 @@
 
     function computeTransport(features) {
         const modes = [
-            { key: 'n_transporte_auto', label: 'Auto', icon: '🚗' },
-            { key: 'n_transporte_publico', label: 'Transporte Público', icon: '🚌' },
-            { key: 'n_transporte_camina', label: 'Camina', icon: '🚶' },
-            { key: 'n_transporte_bicicleta', label: 'Bicicleta', icon: '🚲' },
-            { key: 'n_transporte_motocicleta', label: 'Moto', icon: '🏍️' }
+            { key: 'n_transporte_auto', label: 'Auto', icon: carIcon },
+            { key: 'n_transporte_publico', label: 'Transporte Público', icon: busIcon },
+            { key: 'n_transporte_camina', label: 'Camina', icon: walkIcon },
+            { key: 'n_transporte_bicicleta', label: 'Bicicleta', icon: bikeIcon },
+            { key: 'n_transporte_motocicleta', label: 'Moto', icon: motorbikeIcon }
         ];
         return modes.map(m => ({
             ...m,
@@ -115,28 +136,29 @@
         })).filter(t => t.count > 0).sort((a, b) => b.count - a.count);
     }
 
-    // Get max for age chart scaling
+    // Get max for chart scaling
     $: ageMax = Math.max(...$ageGroupsData.map(d => d.count), 1);
     $: transportMax = transportData.length > 0 ? Math.max(...transportData.map(d => d.count), 1) : 1;
     $: tenureMax = tenureData.length > 0 ? Math.max(...tenureData.map(d => d.count), 1) : 1;
 </script>
 
 <aside class="sidebar">
+    <!-- 1. Header con título y conteo -->
     <header class="sidebar-header">
         <h2>Censo 2024</h2>
         <span class="manzanas-count">{$selectedFeatures.length} manzanas</span>
     </header>
 
-    {#if !$isLensActive}
+    {#if $selectedFeatures.length === 0}
         <div class="empty-state">
             <div class="icon">
                 <img src={targetIcon} alt="target" />
             </div>
-            <p>Mueve el cursor sobre el mapa para explorar</p>
-            <span class="hint">Scroll para cambiar el radio · Click para fijar</span>
+            <p>Selecciona una dirección o comuna para ver datos</p>
         </div>
     {:else}
         <div class="sidebar-content">
+            <!-- 2. Datos principales -->
             <div class="quick-stats">
                 <div class="quick-stat">
                     <span class="qs-value">{$totalPopulation.toLocaleString('es-CL')}</span>
@@ -152,31 +174,64 @@
                 </div>
             </div>
 
+            <div class="separator"></div>
+
+            <!-- 3. Slot para barra de búsqueda -->
+            <div class="slot-section">
+                <slot name="search"></slot>
+            </div>
+
+            <div class="separator"></div>
+
+            <!-- 4. Slot para selector de comunas -->
+            <div class="slot-section">
+                <slot name="comunas"></slot>
+            </div>
+
+            <div class="separator"></div>
+
+            <!-- 5. Slot para Explorar Variables (Heatmap) -->
+            <div class="slot-section">
+                <slot name="heatmap"></slot>
+            </div>
+
+            <div class="separator"></div>
+
+            <!-- 6. Panel con datos (categorías) -->
             <div class="categories">
                 {#each categories as cat}
                     <div class="category" class:expanded={expandedCategories[cat.id]}>
                         <button class="category-header" on:click={() => toggleCategory(cat.id)}>
-                            <span class="cat-icon">{cat.icon}</span>
+                            <span class="cat-icon">
+                                {#if cat.icon.length < 5}
+                                    {cat.icon}
+                                {:else}
+                                    <img src={cat.icon} alt={cat.label} />
+                                {/if}
+                            </span>
                             <span class="cat-label">{cat.label}</span>
                             <span class="chevron">{expandedCategories[cat.id] ? '▼' : '▶'}</span>
                         </button>
 
                         {#if expandedCategories[cat.id]}
                             <div class="category-content">
-                                <div class="topic-pills">
-                                    {#each cat.topics as topicId}
-                                        <button
-                                                class="topic-pill"
-                                                class:active={$activeTopic === topicId}
-                                                on:click={() => setTopic(topicId)}
-                                        >
-                                            {getTopicLabel(topicId)}
-                                        </button>
-                                    {/each}
-                                </div>
+                                <!-- Si tiene topics, mostrar píldoras -->
+                                {#if cat.topics.length > 0}
+                                    <div class="topic-pills">
+                                        {#each cat.topics as topicId}
+                                            <button
+                                                    class="topic-pill"
+                                                    class:active={$activeTopic === topicId}
+                                                    on:click={() => setTopic(topicId)}
+                                            >
+                                                {getTopicLabel(topicId)}
+                                            </button>
+                                        {/each}
+                                    </div>
+                                {/if}
 
-                                {#if cat.topics.includes($activeTopic)}
-                                    <div class="topic-data">
+                                <div class="topic-data">
+                                    {#if cat.id === 'demografia'}
                                         {#if $activeTopic === 'population'}
                                             <div class="gender-split">
                                                 <div class="gender-bar">
@@ -191,7 +246,7 @@
 
                                             {#if migrationData.inmigrantes > 0 || migrationData.pueblosOrig > 0}
                                                 <div class="subsection">
-                                                    <span class="subsection-title">Población Flotante y Origen</span>
+                                                    <span class="subsection-title">Población y Origen</span>
                                                     <div class="mini-stats">
                                                         {#if migrationData.inmigrantes > 0}
                                                             <div class="mini-stat">
@@ -221,8 +276,10 @@
                                                     </div>
                                                 {/each}
                                             </div>
+                                        {/if}
 
-                                        {:else if $activeTopic === 'employment'}
+                                    {:else if cat.id === 'socioeconomico'}
+                                        {#if $activeTopic === 'employment'}
                                             <div class="employment-grid">
                                                 <div class="emp-card good">
                                                     <span class="emp-value">{$employmentData.employed.toLocaleString('es-CL')}</span>
@@ -278,8 +335,10 @@
                                                     </div>
                                                 </div>
                                             {/if}
+                                        {/if}
 
-                                        {:else if $activeTopic === 'housing'}
+                                    {:else if cat.id === 'vivienda'}
+                                        {#if $activeTopic === 'housing'}
                                             <div class="housing-grid">
                                                 <div class="house-card">
                                                     <img src={houseIcon} alt="casa" />
@@ -366,73 +425,66 @@
                                                 </div>
                                             {/if}
                                         {/if}
-                                    </div>
-                                {/if}
+
+                                    {:else if cat.id === 'transporte'}
+                                        {#if transportData.length > 0}
+                                            <div class="transport-list">
+                                                {#each transportData as t}
+                                                    <div class="transport-row">
+                                                        <span class="tr-icon">
+                                                            {#if t.icon.length < 5}
+                                                                {t.icon}
+                                                            {:else}
+                                                                <img src={t.icon} alt={t.label} />
+                                                            {/if}
+                                                        </span>
+                                                        <span class="tr-label">{t.label}</span>
+                                                        <div class="bar-track small">
+                                                            <div class="bar-fill" style="width: {(t.count / transportMax) * 100}%"></div>
+                                                        </div>
+                                                        <span class="tr-value">{t.count}</span>
+                                                    </div>
+                                                {/each}
+                                            </div>
+                                        {:else}
+                                            <p class="no-data">Sin datos de transporte</p>
+                                        {/if}
+
+                                    {:else if cat.id === 'energia'}
+                                        <div class="energy-grid">
+                                            <div class="energy-item" class:dominant={energyData.lena > energyData.gas && energyData.lena > energyData.electricidad}>
+                                                <span class="e-icon">
+                                                    <img src={woodIcon} alt="Leña" />
+                                                </span>
+                                                <span class="e-value">{energyData.lena}</span>
+                                                <span class="e-label">Leña</span>
+                                            </div>
+                                            <div class="energy-item" class:dominant={energyData.gas > energyData.lena && energyData.gas > energyData.electricidad}>
+                                                <span class="e-icon">
+                                                    <img src={gasIcon} alt="Gas" />
+                                                </span>
+                                                <span class="e-value">{energyData.gas}</span>
+                                                <span class="e-label">Gas</span>
+                                            </div>
+                                            <div class="energy-item" class:dominant={energyData.electricidad > energyData.lena && energyData.electricidad > energyData.gas}>
+                                                <span class="e-icon">
+                                                    <img src={electricityIcon} alt="Eléctrica" />
+                                                </span>
+                                                <span class="e-value">{energyData.electricidad}</span>
+                                                <span class="e-label">Eléctrica</span>
+                                            </div>
+                                        </div>
+                                    {/if}
+                                </div>
                             </div>
                         {/if}
                     </div>
+
+                    <!-- Separador entre categorías -->
+                    {#if cat.id !== 'energia'}
+                        <div class="separator"></div>
+                    {/if}
                 {/each}
-
-                <div class="category" class:expanded={expandedCategories['transporte']}>
-                    <button class="category-header" on:click={() => toggleCategory('transporte')}>
-                        <span class="cat-icon">🚗</span>
-                        <span class="cat-label">Transporte</span>
-                        <span class="chevron">{expandedCategories['transporte'] ? '▼' : '▶'}</span>
-                    </button>
-                    {#if expandedCategories['transporte']}
-                        <div class="category-content">
-                            <div class="topic-data">
-                                {#if transportData.length > 0}
-                                    <div class="transport-list">
-                                        {#each transportData as t}
-                                            <div class="transport-row">
-                                                <span class="tr-icon">{t.icon}</span>
-                                                <span class="tr-label">{t.label}</span>
-                                                <div class="bar-track small">
-                                                    <div class="bar-fill" style="width: {(t.count / transportMax) * 100}%"></div>
-                                                </div>
-                                                <span class="tr-value">{t.count}</span>
-                                            </div>
-                                        {/each}
-                                    </div>
-                                {:else}
-                                    <p class="no-data">Sin datos de transporte</p>
-                                {/if}
-                            </div>
-                        </div>
-                    {/if}
-                </div>
-
-                <div class="category" class:expanded={expandedCategories['energia']}>
-                    <button class="category-header" on:click={() => toggleCategory('energia')}>
-                        <span class="cat-icon">🔥</span>
-                        <span class="cat-label">Calefacción</span>
-                        <span class="chevron">{expandedCategories['energia'] ? '▼' : '▶'}</span>
-                    </button>
-                    {#if expandedCategories['energia']}
-                        <div class="category-content">
-                            <div class="topic-data">
-                                <div class="energy-grid">
-                                    <div class="energy-item" class:dominant={energyData.lena > energyData.gas && energyData.lena > energyData.electricidad}>
-                                        <span class="e-icon">🪵</span>
-                                        <span class="e-value">{energyData.lena}</span>
-                                        <span class="e-label">Leña</span>
-                                    </div>
-                                    <div class="energy-item" class:dominant={energyData.gas > energyData.lena && energyData.gas > energyData.electricidad}>
-                                        <span class="e-icon">🔵</span>
-                                        <span class="e-value">{energyData.gas}</span>
-                                        <span class="e-label">Gas</span>
-                                    </div>
-                                    <div class="energy-item" class:dominant={energyData.electricidad > energyData.lena && energyData.electricidad > energyData.gas}>
-                                        <span class="e-icon">⚡</span>
-                                        <span class="e-value">{energyData.electricidad}</span>
-                                        <span class="e-label">Eléctrica</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    {/if}
-                </div>
             </div>
         </div>
     {/if}
@@ -440,81 +492,134 @@
 
 <style>
     .sidebar {
-        width: 340px;
-        max-height: 90vh;
-        background: rgba(20, 25, 35, 0.95);
-        border-radius: 12px;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-        overflow: hidden;
+        width: 380px;
+        background: #1a1a1a !important;
+        color: #fff;
         display: flex;
         flex-direction: column;
-        backdrop-filter: blur(10px);
-        color: #e0e0e0;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        max-height: calc(100vh - 32px);
     }
 
     .sidebar-header {
+        padding: 16px;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 16px 20px;
-        border-bottom: 1px solid rgba(255,255,255,0.08);
-        flex-shrink: 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
 
     .sidebar-header h2 {
         margin: 0;
-        font-size: 1rem;
-        font-weight: 600;
-        color: #ffffff;
-        letter-spacing: 0.5px;
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #fff;
     }
 
     .manzanas-count {
-        font-size: 0.7rem;
-        color: #4ecdc4;
-        background: rgba(78, 205, 196, 0.1);
-        padding: 5px 12px;
+        background: rgba(255, 204, 5, 0.2);
+        border: 1px solid #ffcc05;
+        color: #ffcc05;
+        padding: 4px 12px;
         border-radius: 20px;
-        border: 1px solid rgba(78, 205, 196, 0.2);
+        font-size: 0.75rem;
+        font-weight: 600;
     }
 
     .empty-state {
-        padding: 60px 24px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 40px 24px;
         text-align: center;
-        color: #888;
+        color: rgba(255, 255, 255, 0.6);
     }
 
-    .empty-state .icon { margin-bottom: 20px; }
-    .empty-state .icon img { width: 56px; height: 56px; filter: invert(1); opacity: 0.5; }
-    .empty-state p { margin: 0 0 10px; font-size: 0.95rem; line-height: 1.4; }
-    .empty-state .hint { font-size: 0.75rem; color: #555; }
+    .empty-state .icon {
+        width: 64px;
+        height: 64px;
+        margin-bottom: 16px;
+        opacity: 0.4;
+    }
+
+    .empty-state .icon img {
+        width: 100%;
+        height: 100%;
+        filter: invert(1);
+    }
+
+    .empty-state p {
+        margin: 0;
+        font-size: 0.9rem;
+        line-height: 1.4;
+    }
 
     .sidebar-content {
         flex: 1;
         overflow-y: auto;
         overflow-x: hidden;
-        padding-bottom: 24px; /* Added padding for scroll end */
+        min-height: 0;
     }
 
-    /* Quick Stats */
+    /* Quick stats */
     .quick-stats {
-        display: flex;
-        justify-content: space-evenly;
-        padding: 18px 16px;
-        background: rgba(255,255,255,0.02);
-        border-bottom: 1px solid rgba(255,255,255,0.06);
-        margin-bottom: 8px; /* Breathing room before accordion */
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        padding: 20px 16px;
     }
 
-    .quick-stat { text-align: center; }
-    .qs-value { display: block; font-size: 1.3rem; font-weight: 700; color: #fff; margin-bottom: 2px; }
-    .qs-label { font-size: 0.65rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+    .quick-stat {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+
+    .qs-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #ffcc05;
+        margin-bottom: 4px;
+    }
+
+    .qs-label {
+        font-size: 0.75rem;
+        color: rgba(255, 255, 255, 0.7);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    /* Separator */
+    .separator {
+        height: 1px;
+        background: rgba(255, 255, 255, 0.1);
+        margin: 10px 10px;
+    }
+
+    /* Slot sections */
+    .slot-section {
+        padding: 12px 16px;
+        max-width: 100%;
+        overflow: hidden;
+    }
+
+    /* Global styles for slot content */
+    .slot-section :global(*) {
+        max-width: 100%;
+        box-sizing: border-box;
+    }
 
     /* Categories */
-    .categories { display: flex; flex-direction: column; }
+    .categories {
+        padding: 12px 16px 16px 16px;
+    }
 
     .category {
-        border-bottom: 1px solid rgba(255,255,255,0.05);
+        margin-bottom: 0;
     }
 
     .category-header {
@@ -522,207 +627,540 @@
         display: flex;
         align-items: center;
         gap: 12px;
-        padding: 14px 20px;
-        background: transparent;
+        padding: 12px 0;
+        background: none;
         border: none;
-        color: #ccc;
-        font-size: 0.9rem;
+        color: #fff;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: all 0.2s ease;
     }
 
-    .category-header:hover { background: rgba(255,255,255,0.03); color: #fff; }
-    .category.expanded .category-header { background: rgba(78, 205, 196, 0.08); color: #4ecdc4; }
+    .category-header:hover {
+        color: #ffcc05;
+    }
 
-    .cat-icon { font-size: 1.1rem; }
-    .cat-label { flex: 1; text-align: left; font-weight: 500; }
-    .chevron { font-size: 0.6rem; color: #666; transition: transform 0.2s; }
-    .category.expanded .chevron { transform: rotate(90deg); }
+    .cat-icon {
+        font-size: 1.25rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .cat-icon img {
+        width: 20px;
+        height: 20px;
+        filter: brightness(0) invert(1);
+    }
+
+    .cat-label {
+        flex: 1;
+        text-align: left;
+        font-size: 0.95rem;
+        font-weight: 600;
+    }
+
+    .chevron {
+        font-size: 0.75rem;
+        color: rgba(255, 255, 255, 0.5);
+        transition: transform 0.2s ease;
+    }
+
+    .category.expanded .chevron {
+        transform: rotate(0deg);
+    }
 
     .category-content {
-        padding: 0 20px 20px; /* More horizontal padding */
-        background: rgba(0,0,0,0.1);
+        padding: 12px 0 0 0;
     }
 
-    /* Topic Pills */
+    /* Topic pills */
     .topic-pills {
         display: flex;
         gap: 8px;
-        margin: 16px 0 20px; /* Increased bottom margin */
+        margin-bottom: 16px;
         flex-wrap: wrap;
     }
 
     .topic-pill {
-        padding: 6px 14px;
-        background: rgba(255,255,255,0.06);
-        border: 1px solid transparent;
+        padding: 8px 16px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 20px;
-        color: #aaa;
-        font-size: 0.75rem;
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 0.8rem;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: all 0.2s ease;
+        white-space: nowrap;
     }
 
-    .topic-pill:hover { background: rgba(255,255,255,0.1); color: #fff; border-color: rgba(255,255,255,0.1); }
-    .topic-pill.active { background: #4ecdc4; color: #1a1a2e; font-weight: 600; border-color: #4ecdc4; box-shadow: 0 2px 8px rgba(78,205,196,0.3); }
-
-    /* Topic Data */
-    .topic-data { animation: fadeIn 0.3s ease-out; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-
-    /* Gender Split */
-    .gender-split { margin-bottom: 24px; }
-    .gender-bar {
-        height: 10px;
-        border-radius: 5px;
-        overflow: hidden;
-        display: flex;
-        background: #2a2a3a;
-        margin-bottom: 12px;
+    .topic-pill:hover {
+        background: rgba(255, 204, 5, 0.1);
+        border-color: rgba(255, 204, 5, 0.3);
+        color: #ffcc05;
     }
-    .gender-fill.male { background: #4a9eff; }
-    .gender-fill.female { background: #ff6b9d; }
-    .gender-legend { display: flex; justify-content: space-between; gap: 10px; }
-    .gl-item { font-size: 0.8rem; color: #ccc; display: flex; align-items: center; gap: 8px; }
-    .dot { width: 8px; height: 8px; border-radius: 50%; }
-    .dot.male { background: #4a9eff; }
-    .dot.female { background: #ff6b9d; }
 
-    /* Age Bars */
-    .age-bars { display: flex; flex-direction: column; gap: 4px; } /* Increased gap */
-    .age-row { display: flex; align-items: center; gap: 12px; padding: 2px 0; }
-    .age-label { width: 45px; font-size: 0.75rem; color: #999; text-align: right; }
-    .bar-track { flex: 1; height: 16px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; }
-    .bar-track.small { height: 12px; }
-    .bar-fill { height: 100%; background: linear-gradient(90deg, #3d84d6, #4ecdc4); border-radius: 3px; transition: width 0.4s cubic-bezier(0.2, 0.8, 0.2, 1); }
-    .bar-fill.good { background: #4ecdc4; }
-    .bar-fill.bad { background: #ff6b6b; }
-    .age-count { width: 45px; font-size: 0.75rem; color: #ccc; text-align: right; font-feature-settings: "tnum"; }
-
-    /* Employment Grid */
-    .employment-grid { display: flex; flex-direction: column; gap: 12px; }
-    .emp-card {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 14px 16px;
-        background: rgba(255,255,255,0.04);
-        border-radius: 10px;
-        border: 1px solid rgba(255,255,255,0.03);
-    }
-    .emp-value { font-size: 1.15rem; font-weight: 700; color: #fff; min-width: 60px; }
-    .emp-label { flex: 1; font-size: 0.8rem; color: #999; }
-    .emp-pct { font-size: 0.85rem; font-weight: 600; padding: 2px 8px; border-radius: 6px; background: rgba(0,0,0,0.2); }
-    .emp-card.good .emp-pct { color: #4ecdc4; background: rgba(78, 205, 196, 0.1); }
-    .emp-card.bad .emp-pct { color: #ff6b6b; background: rgba(255, 107, 107, 0.1); }
-    .emp-card.neutral .emp-pct { color: #aaa; }
-
-    /* Literacy */
-    .literacy-bars { display: flex; flex-direction: column; gap: 16px; }
-    .lit-row { display: flex; align-items: center; gap: 12px; }
-    .lit-label { width: 90px; font-size: 0.8rem; color: #aaa; }
-    .lit-value { width: 45px; font-size: 0.8rem; color: #fff; text-align: right; font-weight: 600; }
-
-    /* Housing Grid */
-    .housing-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-    .house-card {
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,255,255,0.02);
-        border-radius: 10px;
-        padding: 16px;
-        text-align: center;
-        transition: transform 0.2s;
-    }
-    .house-card:hover { transform: translateY(-2px); background: rgba(255,255,255,0.06); }
-    .house-card img { width: 24px; height: 24px; opacity: 0.8; margin-bottom: 8px; }
-    .hc-value { display: block; font-size: 1.2rem; font-weight: 700; color: #fff; margin-bottom: 2px; }
-    .hc-label { font-size: 0.75rem; color: #888; }
-
-    /* Tenure */
-    .tenure-bars { display: flex; flex-direction: column; gap: 8px; }
-    .tenure-row { display: flex; align-items: center; gap: 10px; padding: 2px 0; }
-    .t-label { width: 90px; font-size: 0.75rem; color: #999; }
-    .t-value { width: 40px; font-size: 0.75rem; color: #ccc; text-align: right; }
-
-    /* Households */
-    .hh-stats { text-align: center; margin-bottom: 24px; }
-    .hh-main { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.05); }
-    .hh-value { display: block; font-size: 2.2rem; font-weight: 700; color: #fff; letter-spacing: -1px; }
-    .hh-label { font-size: 0.8rem; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-    .hh-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-    .hh-item {
-        background: rgba(255,255,255,0.04);
-        border-radius: 8px;
-        padding: 12px 10px;
-        text-align: center;
-    }
-    .hh-item.highlight { background: rgba(255, 107, 157, 0.1); border: 1px solid rgba(255, 107, 157, 0.25); }
-    .hhi-value { display: block; font-size: 1.2rem; font-weight: 700; color: #fff; margin-bottom: 4px; }
-    .hh-item.highlight .hhi-value { color: #ff6b9d; }
-    .hhi-label { font-size: 0.7rem; color: #888; }
-
-    /* Subsections - Improved Spacing */
-    .subsection {
-        margin-top: 24px;
-        padding-top: 16px;
-        border-top: 1px solid rgba(255,255,255,0.08);
-    }
-    .subsection-title {
-        display: block;
-        font-size: 0.75rem;
-        color: #666;
-        text-transform: uppercase;
-        letter-spacing: 0.8px;
-        margin-bottom: 12px;
+    .topic-pill.active {
+        background: #ffcc05;
+        border-color: #ffcc05;
+        color: #0F2854;
         font-weight: 600;
     }
 
-    /* Mini Stats */
-    .mini-stats { display: flex; gap: 10px; flex-wrap: wrap; }
-    .mini-stat {
-        background: rgba(255,255,255,0.04);
-        padding: 10px 14px;
+    .topic-data {
+        margin-top: 12px;
+    }
+
+    /* Gender split */
+    .gender-split {
+        margin-bottom: 16px;
+    }
+
+    .gender-bar {
+        height: 8px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+        overflow: hidden;
+        display: flex;
+        margin-bottom: 12px;
+    }
+
+    .gender-fill {
+        height: 100%;
+        transition: width 0.3s ease;
+    }
+
+    .gender-fill.male {
+        background: #4a9eff;
+    }
+
+    .gender-fill.female {
+        background: #ff6b9d;
+    }
+
+    .gender-legend {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .gl-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.8rem;
+        color: rgba(255, 255, 255, 0.9);
+    }
+
+    .dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+    }
+
+    .dot.male {
+        background: #4a9eff;
+    }
+
+    .dot.female {
+        background: #ff6b9d;
+    }
+
+    /* Age bars */
+    .age-bars {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .age-row {
+        display: grid;
+        grid-template-columns: 50px 1fr 60px;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .age-label {
+        font-size: 0.75rem;
+        color: rgba(255, 255, 255, 0.7);
+    }
+
+    .bar-track {
+        height: 20px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 10px;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .bar-track.small {
+        height: 16px;
+    }
+
+    .bar-fill {
+        height: 100%;
+        background: #ffcc05;
+        border-radius: 10px;
+        transition: width 0.3s ease;
+    }
+
+    .bar-fill.good {
+        background: #4ade80;
+    }
+
+    .bar-fill.bad {
+        background: #ef4444;
+    }
+
+    .age-count {
+        font-size: 0.75rem;
+        color: rgba(255, 255, 255, 0.9);
+        text-align: right;
+    }
+
+    /* Employment */
+    .employment-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+    }
+
+    .emp-card {
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.05);
         border-radius: 8px;
         text-align: center;
-        flex: 1;
-        min-width: 70px;
-        border: 1px solid rgba(255,255,255,0.02);
+        border: 1px solid rgba(255, 255, 255, 0.1);
     }
-    .ms-value { display: block; font-size: 1.1rem; font-weight: 700; color: #fff; margin-bottom: 2px; }
-    .ms-label { font-size: 0.65rem; color: #888; }
+
+    .emp-card.good {
+        border-color: rgba(74, 222, 128, 0.3);
+        background: rgba(74, 222, 128, 0.05);
+    }
+
+    .emp-card.bad {
+        border-color: rgba(239, 68, 68, 0.3);
+        background: rgba(239, 68, 68, 0.05);
+    }
+
+    .emp-card.neutral {
+        border-color: rgba(255, 204, 5, 0.2);
+        background: rgba(255, 204, 5, 0.05);
+    }
+
+    .emp-value {
+        display: block;
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 4px;
+    }
+
+    .emp-label {
+        display: block;
+        font-size: 0.7rem;
+        color: rgba(255, 255, 255, 0.7);
+        margin-bottom: 2px;
+    }
+
+    .emp-pct {
+        display: block;
+        font-size: 0.75rem;
+        color: #ffcc05;
+        font-weight: 600;
+    }
+
+    /* Literacy */
+    .literacy-bars {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .lit-row {
+        display: grid;
+        grid-template-columns: 100px 1fr 50px;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .lit-label {
+        font-size: 0.8rem;
+        color: rgba(255, 255, 255, 0.9);
+    }
+
+    .lit-value {
+        font-size: 0.75rem;
+        color: rgba(255, 255, 255, 0.9);
+        text-align: right;
+    }
+
+    /* Housing */
+    .housing-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+
+    .house-card {
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .house-card img {
+        width: 24px;
+        height: 24px;
+        filter: invert(1);
+        opacity: 0.8;
+    }
+
+    .hc-value {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #fff;
+    }
+
+    .hc-label {
+        font-size: 0.7rem;
+        color: rgba(255, 255, 255, 0.7);
+    }
+
+    /* Households */
+    .hh-stats {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .hh-main {
+        text-align: center;
+        padding: 16px;
+        background: rgba(255, 204, 5, 0.1);
+        border-radius: 8px;
+        border: 1px solid rgba(255, 204, 5, 0.2);
+    }
+
+    .hh-value {
+        display: block;
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: #ffcc05;
+        margin-bottom: 4px;
+    }
+
+    .hh-label {
+        font-size: 0.75rem;
+        color: rgba(255, 255, 255, 0.8);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .hh-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+
+    .hh-item {
+        padding: 10px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 6px;
+        text-align: center;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .hh-item.highlight {
+        border-color: rgba(255, 204, 5, 0.3);
+        background: rgba(255, 204, 5, 0.05);
+    }
+
+    .hhi-value {
+        display: block;
+        font-size: 1rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 4px;
+    }
+
+    .hhi-label {
+        font-size: 0.7rem;
+        color: rgba(255, 255, 255, 0.7);
+    }
+
+    /* Subsections */
+    .subsection {
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .subsection-title {
+        display: block;
+        font-size: 0.75rem;
+        color: rgba(255, 255, 255, 0.6);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 10px;
+        font-weight: 600;
+    }
+
+    .mini-stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+    }
+
+    .mini-stat {
+        padding: 10px;
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 6px;
+        text-align: center;
+    }
+
+    .ms-value {
+        display: block;
+        font-size: 1rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 4px;
+    }
+
+    .ms-label {
+        font-size: 0.65rem;
+        color: rgba(255, 255, 255, 0.7);
+    }
 
     /* Transport */
-    .transport-list { display: flex; flex-direction: column; gap: 10px; }
-    .transport-row { display: flex; align-items: center; gap: 12px; padding: 2px 0; }
-    .tr-icon { font-size: 1.1rem; width: 28px; text-align: center; }
-    .tr-label { width: 110px; font-size: 0.8rem; color: #aaa; }
-    .tr-value { width: 40px; font-size: 0.8rem; color: #ccc; text-align: right; }
+    .transport-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .transport-row {
+        display: grid;
+        grid-template-columns: 30px 110px 1fr 50px;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .tr-icon {
+        font-size: 1.25rem;
+        text-align: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .tr-icon img {
+        width: 20px;
+        height: 20px;
+        filter: brightness(0) invert(1);
+    }
+
+    .tr-label {
+        font-size: 0.75rem;
+        color: rgba(255, 255, 255, 0.9);
+    }
+
+    .tr-value {
+        font-size: 0.75rem;
+        color: rgba(255, 255, 255, 0.9);
+        text-align: right;
+    }
 
     /* Energy */
-    .energy-grid { display: flex; justify-content: space-between; gap: 12px; }
+    .energy-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+    }
+
     .energy-item {
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
         text-align: center;
-        padding: 16px 10px;
-        background: rgba(255,255,255,0.04);
-        border-radius: 10px;
-        flex: 1;
         transition: all 0.2s;
-        border: 1px solid transparent;
+        border: 1px solid rgba(255, 255, 255, 0.1);
     }
+
     .energy-item.dominant {
-        background: rgba(255, 140, 66, 0.15);
-        border-color: rgba(255, 140, 66, 0.3);
-        box-shadow: 0 4px 12px rgba(255, 140, 66, 0.1);
+        background: rgba(255, 204, 5, 0.15);
+        border-color: rgba(255, 204, 5, 0.4);
     }
-    .e-icon { font-size: 1.8rem; display: block; margin-bottom: 8px; }
-    .e-value { display: block; font-size: 1.3rem; font-weight: 700; color: #fff; margin-bottom: 2px; }
-    .e-label { font-size: 0.7rem; color: #999; }
 
-    .no-data { color: #666; font-size: 0.85rem; text-align: center; padding: 30px; font-style: italic; }
+    .e-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        margin-bottom: 6px;
+    }
 
-    /* Scrollbar */
-    .sidebar-content::-webkit-scrollbar { width: 6px; }
-    .sidebar-content::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
-    .sidebar-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
-    .sidebar-content::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+    .e-icon img {
+        width: 24px;
+        height: 24px;
+        filter: brightness(0) invert(1);
+    }
+
+    .e-value {
+        display: block;
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 4px;
+    }
+
+    .e-label {
+        font-size: 0.7rem;
+        color: rgba(255, 255, 255, 0.7);
+    }
+
+    .tenure-bars {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .tenure-row {
+        display: grid;
+        grid-template-columns: 100px 1fr 40px;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .t-label {
+        font-size: 0.75rem;
+        color: rgba(255, 255, 255, 0.9);
+    }
+
+    .t-value {
+        font-size: 0.75rem;
+        color: rgba(255, 255, 255, 0.9);
+        text-align: right;
+    }
+
+    .no-data {
+        text-align: center;
+        color: rgba(255, 255, 255, 0.4);
+        font-size: 0.8rem;
+        padding: 20px;
+        margin: 0;
+    }
+
+    /* Scrollbar - OCULTA pero funcional */
+    .sidebar-content {
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* IE/Edge */
+    }
+
+    .sidebar-content::-webkit-scrollbar {
+        display: none; /* Chrome/Safari/Opera */
+    }
 </style>
