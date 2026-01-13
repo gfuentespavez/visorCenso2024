@@ -1,5 +1,20 @@
 import { writable, derived } from 'svelte/store';
 
+// Import SVG icons
+import bikeIcon from '$lib/assets/icons/bike-svgrepo-com.svg';
+import busIcon from '$lib/assets/icons/bus-svgrepo-com.svg';
+import walkIcon from '$lib/assets/icons/walk-svgrepo-com.svg';
+import carIcon from '$lib/assets/icons/car-side-svgrepo-com.svg';
+import womanIcon from '$lib/assets/icons/woman-svgrepo-com.svg';
+import featherIcon from '$lib/assets/icons/native-american-feather-svgrepo-com.svg';
+import worldIcon from '$lib/assets/icons/world-svgrepo-com.svg';
+import elderlyIcon from '$lib/assets/icons/elderly-svgrepo-com.svg';
+import youngIcon from '$lib/assets/icons/young-man-with-goatbeard-svgrepo-com.svg';
+import babyIcon from '$lib/assets/icons/baby-11-svgrepo-com.svg';
+import houseMedicalIcon from '$lib/assets/icons/house-medical-xmark-svgrepo-com.svg';
+import noWifiIcon from '$lib/assets/icons/no-wifi-svgrepo-com.svg';
+import chartDownIcon from '$lib/assets/icons/chart-line-down-svgrepo-com.svg';
+
 // Lens state
 export const lensCenter = writable(null); // { lng, lat }
 export const lensRadius = writable(0.5); // km
@@ -12,6 +27,15 @@ export const selectedFeatures = writable([]);
 // Active topic for sidebar visualization
 export const activeTopic = writable('population'); // population, age-pyramid, employment, housing, literacy
 
+// NEW: Selected radius ring (null, 500, 1000, 3000 meters)
+export const selectedRadiusRing = writable(null);
+
+// NEW: Visualization mode
+export const visualizationMode = writable('lens'); // 'lens' or 'heatmap'
+
+// NEW: Active heatmap variable
+export const activeHeatmapVariable = writable(null);
+
 // Available topics configuration (matching INE Censo data)
 export const topics = [
     { id: 'population', label: 'Población y Género', icon: 'people' },
@@ -22,7 +46,136 @@ export const topics = [
     { id: 'households', label: 'Hogares', icon: 'family' }
 ];
 
-// Derived: total population in lens
+// NEW: Available heatmap variables for thematic visualization
+// Each variable includes compareFields: array of related fields to determine dominance
+export const heatmapVariables = [
+    {
+        id: 'transporte_bicicleta',
+        label: 'Uso de Bicicleta',
+        category: 'Transporte',
+        field: 'n_transporte_bicicleta',
+        icon: bikeIcon,
+        description: 'Manzanas donde la bicicleta es el modo de transporte dominante',
+        compareFields: ['n_transporte_bicicleta', 'n_transporte_publico', 'n_transporte_camina', 'n_transporte_auto', 'n_transporte_motocicleta']
+    },
+    {
+        id: 'transporte_publico',
+        label: 'Transporte Público',
+        category: 'Transporte',
+        field: 'n_transporte_publico',
+        icon: busIcon,
+        description: 'Manzanas donde el transporte público es dominante',
+        compareFields: ['n_transporte_bicicleta', 'n_transporte_publico', 'n_transporte_camina', 'n_transporte_auto', 'n_transporte_motocicleta']
+    },
+    {
+        id: 'transporte_camina',
+        label: 'Caminata',
+        category: 'Transporte',
+        field: 'n_transporte_camina',
+        icon: walkIcon,
+        description: 'Manzanas donde caminar es el modo dominante',
+        compareFields: ['n_transporte_bicicleta', 'n_transporte_publico', 'n_transporte_camina', 'n_transporte_auto', 'n_transporte_motocicleta']
+    },
+    {
+        id: 'transporte_auto',
+        label: 'Automóvil Particular',
+        category: 'Transporte',
+        field: 'n_transporte_auto',
+        icon: carIcon,
+        description: 'Manzanas donde el auto es el modo dominante',
+        compareFields: ['n_transporte_bicicleta', 'n_transporte_publico', 'n_transporte_camina', 'n_transporte_auto', 'n_transporte_motocicleta']
+    },
+    {
+        id: 'jefatura_mujer',
+        label: 'Jefatura Femenina',
+        category: 'Hogares',
+        field: 'n_jefatura_mujer',
+        icon: womanIcon,
+        description: 'Manzanas donde predominan hogares con jefatura femenina',
+        compareFields: null // No comparison - shows where it's >50% of households
+    },
+    {
+        id: 'pueblos_originarios',
+        label: 'Pueblos Originarios',
+        category: 'Identidad',
+        field: 'n_pueblos_orig',
+        icon: featherIcon,
+        description: 'Manzanas con alta presencia de pueblos originarios',
+        compareFields: null // No comparison - shows above average
+    },
+    {
+        id: 'inmigrantes',
+        label: 'Población Inmigrante',
+        category: 'Identidad',
+        field: 'n_inmigrantes',
+        icon: worldIcon,
+        description: 'Manzanas con alta presencia de población inmigrante',
+        compareFields: null // No comparison - shows above average
+    },
+    {
+        id: 'adultos_mayores',
+        label: 'Adultos Mayores',
+        category: 'Demografía',
+        field: 'n_edad_60_mas',
+        icon: elderlyIcon,
+        description: 'Manzanas donde adultos mayores son el grupo etario dominante',
+        compareFields: ['n_edad_0_5', 'n_edad_6_13', 'n_edad_14_17', 'n_edad_18_24', 'n_edad_25_44', 'n_edad_45_59', 'n_edad_60_mas']
+    },
+    {
+        id: 'jovenes',
+        label: 'Población Joven',
+        category: 'Demografía',
+        field: 'n_edad_18_24',
+        icon: youngIcon,
+        description: 'Manzanas donde jóvenes son el grupo etario dominante',
+        compareFields: ['n_edad_0_5', 'n_edad_6_13', 'n_edad_14_17', 'n_edad_18_24', 'n_edad_25_44', 'n_edad_45_59', 'n_edad_60_mas']
+    },
+    {
+        id: 'ninos',
+        label: 'Población Infantil',
+        category: 'Demografía',
+        field: 'n_edad_0_5',
+        icon: babyIcon,
+        description: 'Manzanas donde niños 0-5 años son el grupo dominante',
+        compareFields: ['n_edad_0_5', 'n_edad_6_13', 'n_edad_14_17', 'n_edad_18_24', 'n_edad_25_44', 'n_edad_45_59', 'n_edad_60_mas']
+    },
+    {
+        id: 'hacinamiento',
+        label: 'Hacinamiento',
+        category: 'Vivienda',
+        field: 'n_viv_hacinadas',
+        icon: houseMedicalIcon,
+        description: 'Manzanas con alta proporción de viviendas hacinadas',
+        compareFields: null // No comparison - shows >30% of total housing
+    },
+    {
+        id: 'sin_internet',
+        label: 'Sin Conectividad',
+        category: 'Conectividad',
+        field: null, // calculated field
+        icon: noWifiIcon,
+        description: 'Manzanas donde predominan hogares sin internet',
+        compareFields: null,
+        calculated: true,
+        calculateFn: (props) => {
+            const total = props.n_hog || 0;
+            const withInternet = props.n_internet || 0;
+            const withoutInternet = total - withInternet;
+            return withoutInternet > withInternet ? withoutInternet : 0;
+        }
+    },
+    {
+        id: 'desocupacion',
+        label: 'Desocupación Alta',
+        category: 'Empleo',
+        field: 'n_desocupado',
+        icon: chartDownIcon,
+        description: 'Manzanas con tasa de desocupación superior al promedio',
+        compareFields: null // No comparison - shows >15% unemployment rate
+    }
+];
+
+// Derived: total population in lens or selected ring
 export const totalPopulation = derived(selectedFeatures, ($features) => {
     return $features.reduce((sum, f) => sum + (f.properties?.n_per || 0), 0);
 });
