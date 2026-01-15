@@ -2,6 +2,8 @@
     import { onMount, onDestroy } from 'svelte';
     import { PUBLIC_MAPBOX_TOKEN } from '$env/static/public';
     import mapboxgl from 'mapbox-gl';
+    import MapboxDraw from '@mapbox/mapbox-gl-draw';
+    import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
     import * as turf from '@turf/turf';
     import {
         lensCenter,
@@ -13,7 +15,9 @@
         totalPopulation,
         selectedRadiusRing,
         visualizationMode,
-        activeHeatmapVariable
+        activeHeatmapVariable,
+        drawMode,
+        drawnPolygon
     } from '$lib/stores/lensStore.js';
 
     export let parcelsData = null;
@@ -21,10 +25,13 @@
 
     let mapContainer;
     let map;
+    let draw; // MapboxDraw instance
     let mapReady = false;
     let addressMode = false; // When true, lens is disabled, showing radius rings
     let lensLocked = false; // When true, lens stays fixed until clicked again
     let selectedRing = null; // 'r500', 'r1k', or 'r3k'
+    let prevDrawMode = false; // Track previous draw mode state to detect transitions
+    let prevSearchLocation = null; // Track previous search location to detect changes
 
     // Throttle function for performance
     function throttle(func, limit) {
@@ -48,6 +55,50 @@
             zoom: 13,
             antialias: true
         });
+
+        // Inicializar Mapbox Draw
+        draw = new MapboxDraw({
+            displayControlsDefault: false,
+            controls: {},
+            styles: [
+                // Estilo para polígonos
+                {
+                    'id': 'gl-draw-polygon-fill',
+                    'type': 'fill',
+                    'filter': ['all', ['==', '$type', 'Polygon']],
+                    'paint': {
+                        'fill-color': '#f5c542',
+                        'fill-opacity': 0.2
+                    }
+                },
+                {
+                    'id': 'gl-draw-polygon-stroke',
+                    'type': 'line',
+                    'filter': ['all', ['==', '$type', 'Polygon']],
+                    'paint': {
+                        'line-color': '#f5c542',
+                        'line-width': 3
+                    }
+                },
+                // Estilo para vértices
+                {
+                    'id': 'gl-draw-polygon-and-line-vertex-active',
+                    'type': 'circle',
+                    'filter': ['all', ['==', 'meta', 'vertex'], ['==', '$type', 'Point']],
+                    'paint': {
+                        'circle-radius': 6,
+                        'circle-color': '#f5c542'
+                    }
+                }
+            ]
+        });
+
+        map.addControl(draw);
+
+        // Eventos de dibujo
+        map.on('draw.create', handleDrawCreate);
+        map.on('draw.update', handleDrawUpdate);
+        map.on('draw.delete', handleDrawDelete);
 
         map.on('load', () => {
             setupLayers();
@@ -76,6 +127,51 @@
             if (map) map.remove();
         };
     });
+
+    // NUEVAS FUNCIONES para manejo de dibujo
+    function handleDrawCreate(e) {
+        const feature = e.features[0];
+        drawnPolygon.set(feature);
+        selectFeaturesInPolygon(feature);
+    }
+
+    function handleDrawUpdate(e) {
+        const feature = e.features[0];
+        drawnPolygon.set(feature);
+        selectFeaturesInPolygon(feature);
+    }
+
+    function handleDrawDelete() {
+        drawnPolygon.set(null);
+        selectedFeatures.set([]);
+        updateLensLayer([]);
+    }
+
+    function selectFeaturesInPolygon(polygon) {
+        if (!parcelsData) return;
+
+        const selected = parcelsData.features.filter(feature => {
+            try {
+                return turf.booleanPointInPolygon(
+                    turf.centroid(feature),
+                    polygon
+                );
+            } catch (e) {
+                return false;
+            }
+        });
+
+        selectedFeatures.set(selected);
+        updateLensLayer(selected);
+    }
+
+    function updateLensLayer(features) {
+        if (map && map.getSource('parcels-selected')) {
+            map.getSource('parcels-selected').setData(
+                turf.featureCollection(features)
+            );
+        }
+    }
 
     function setupLayers() {
         // === HEATMAP LAYER (for thematic visualization) ===
@@ -491,7 +587,7 @@
     }
 
     function handleMouseMove(e) {
-        if (!mapReady || addressMode || lensLocked || $visualizationMode === 'heatmap') return;
+        if (!mapReady || addressMode || lensLocked || $visualizationMode === 'heatmap' || $drawMode) return;
 
         const { lng, lat } = e.lngLat;
 
@@ -503,14 +599,14 @@
     }
 
     function handleMouseLeave() {
-        if (!lensLocked && $visualizationMode !== 'heatmap') {
+        if (!lensLocked && $visualizationMode !== 'heatmap' && !$drawMode) {
             isLensActive.set(false);
             clearLensVisuals();
         }
     }
 
     function handleMouseEnter() {
-        if (!addressMode && !lensLocked && $visualizationMode !== 'heatmap') {
+        if (!addressMode && !lensLocked && $visualizationMode !== 'heatmap' && !$drawMode) {
             isLensActive.set(true);
         }
     }
@@ -520,6 +616,8 @@
         if (addressMode) return;
 
         if ($visualizationMode === 'heatmap') return;
+
+        if ($drawMode) return; // Ignore clicks in draw mode
 
         // Toggle lens lock state
         lensLocked = !lensLocked;
@@ -592,7 +690,7 @@
     }
 
     // React to radius changes from slider
-    $: if (mapReady && $lensCenter && $lensRadius && (lensLocked || $isLensActive)) {
+    $: if (mapReady && $lensCenter && $lensRadius && (lensLocked || $isLensActive) && !$drawMode) {
         updateLens($lensCenter.lng, $lensCenter.lat);
     }
 
@@ -604,14 +702,59 @@
         map.setPaintProperty('lens-center-point', 'circle-radius', lensLocked ? 8 : 6);
     }
 
-    // React to address search location changes
+    // React to address search location changes - only when searchLocation actually changes
     $: if (mapReady && map && parcelsData && $visualizationMode !== 'heatmap') {
-        updateAddressSearch(searchLocation);
+        // Only call updateAddressSearch when searchLocation actually changed
+        if (searchLocation !== prevSearchLocation) {
+            prevSearchLocation = searchLocation;
+            updateAddressSearch(searchLocation);
+        }
     }
 
     // React to visualization mode changes
     $: if (mapReady && map && parcelsData) {
         updateVisualizationMode($visualizationMode, $activeHeatmapVariable);
+    }
+
+    // NUEVA REACCIÓN: Cambios en drawMode
+    $: if (map && draw && mapReady) {
+        // Only run cleanup when transitioning from draw mode to normal mode
+        const wasInDrawMode = prevDrawMode;
+        prevDrawMode = $drawMode;
+
+        if ($drawMode) {
+            // Activar modo de dibujo
+            draw.changeMode('draw_polygon');
+            // Ocultar el lente
+            if (map.getLayer('lens-outline')) {
+                map.setLayoutProperty('lens-outline', 'visibility', 'none');
+            }
+            if (map.getLayer('lens-center-point')) {
+                map.setLayoutProperty('lens-center-point', 'visibility', 'none');
+            }
+            // Limpiar lente
+            clearLensVisuals();
+            lensLocked = false;
+        } else if (wasInDrawMode) {
+            // Only clean up when actually exiting draw mode (not on every reactive run)
+            draw.changeMode('simple_select');
+            draw.deleteAll();
+            drawnPolygon.set(null);
+            // Mostrar el lente
+            if (map.getLayer('lens-outline')) {
+                map.setLayoutProperty('lens-outline', 'visibility', 'visible');
+            }
+            if (map.getLayer('lens-center-point')) {
+                map.setLayoutProperty('lens-center-point', 'visibility', 'visible');
+            }
+            // Limpiar selección only when exiting draw mode
+            selectedFeatures.set([]);
+            updateLensLayer([]);
+            // Reactivar lente si no está en address mode
+            if (!addressMode) {
+                isLensActive.set(true);
+            }
+        }
     }
 
     function updateVisualizationMode(mode, variable) {
@@ -872,6 +1015,7 @@
         } else {
             console.log('=== ADDRESS MODE ===');
             // For address search, use 3km radius
+            const circle3km = turf.circle(point, 3, { units: 'kilometers', steps: 64 });
             allSelected = parcelsData.features.filter(feature => {
                 try {
                     const centroid = turf.centroid(feature);

@@ -197,7 +197,14 @@
 
             <div class="separator"></div>
 
-            <!-- 6. Panel con datos (categorías) -->
+            <!-- 6. Slot para lens control (slider + botón dibujar) -->
+            <div class="slot-section">
+                <slot name="lens-control"></slot>
+            </div>
+
+            <div class="separator"></div>
+
+            <!-- 7. Panel con datos (categorías) -->
             <div class="categories">
                 {#each categories as cat}
                     <div class="category" class:expanded={expandedCategories[cat.id]}>

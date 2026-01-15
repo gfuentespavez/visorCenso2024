@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import DemographicsMap from '$lib/components/DemographicsMap.svelte';
     import DemographicsSidebar from '$lib/components/DemographicsSidebar.svelte';
+    import DemographicsControls from '$lib/components/DemographicsControls.svelte';
     import HeatmapControls from '$lib/components/HeatmapControls.svelte';
     import { fetchAllManzanas } from '$lib/services/manzanasService.js';
     import { selectedFeatures, showParcels } from '$lib/stores/lensStore.js';
@@ -235,6 +236,11 @@
             <!-- Slot para heatmap controls (slot 5) -->
             <div slot="heatmap" class="heatmap-wrapper">
                 <HeatmapControls />
+            </div>
+
+            <!-- Slot para lens controls (slot 6) -->
+            <div slot="lens-control" class="controls-wrapper">
+                <DemographicsControls />
             </div>
         </DemographicsSidebar>
     </div>
@@ -520,6 +526,17 @@
     }
 
     .heatmap-wrapper :global(*) {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Controls wrapper (lens slider + draw button) */
+    .controls-wrapper {
+        max-width: 100%;
+        overflow: hidden;
+    }
+
+    .controls-wrapper :global(*) {
         max-width: 100% !important;
         box-sizing: border-box !important;
     }

@@ -1,23 +1,16 @@
 <script>
-    import { isLensActive, showParcels, showDensity, lensRadius } from '$lib/stores/lensStore.js';
-    import { createEventDispatcher } from 'svelte';
-
-    const dispatch = createEventDispatcher();
-
-    function clearCircle() {
-        dispatch('clear');
-    }
-
-    function toggleDensity() {
-        showDensity.update(v => !v);
-    }
-
-    function toggleParcels() {
-        showParcels.update(v => !v);
-    }
+    import { lensRadius, drawMode, isLensActive } from '$lib/stores/lensStore.js';
 
     function handleRadiusChange(e) {
         lensRadius.set(parseFloat(e.target.value));
+    }
+
+    function toggleDrawMode() {
+        drawMode.update(v => !v);
+        // Si activa draw mode, desactiva el lente
+        if ($drawMode) {
+            isLensActive.set(false);
+        }
     }
 </script>
 
@@ -32,26 +25,18 @@
                 step="0.05"
                 value={$lensRadius}
                 on:input={handleRadiusChange}
+                disabled={$drawMode}
         />
     </div>
 
-    <div class="buttons">
-        <button
-                class="control-btn clear"
-                on:click={clearCircle}
-                disabled={!$isLensActive}
-        >
-            Borrar selección
-        </button>
-
-        <button
-                class="control-btn parcels"
-                class:active={!$showParcels}
-                on:click={toggleParcels}
-        >
-            {$showParcels ? 'Ocultar' : 'Mostrar'} Manzanas
-        </button>
-    </div>
+    <button
+            class="draw-mode-btn"
+            class:active={$drawMode}
+            on:click={toggleDrawMode}
+    >
+        <span class="btn-icon">{$drawMode ? '📍' : '✏️'}</span>
+        <span class="btn-text">{$drawMode ? 'Usar Lente' : 'Dibujar Perímetro'}</span>
+    </button>
 </div>
 
 <style>
@@ -93,6 +78,12 @@
         border-radius: 3px;
         outline: none;
         cursor: pointer;
+        transition: opacity 0.2s ease;
+    }
+
+    input[type="range"]:disabled {
+        opacity: 0.3;
+        cursor: not-allowed;
     }
 
     input[type="range"]::-webkit-slider-thumb {
@@ -111,6 +102,11 @@
         transform: scale(1.15);
     }
 
+    input[type="range"]:disabled::-webkit-slider-thumb {
+        cursor: not-allowed;
+        transform: scale(1);
+    }
+
     input[type="range"]::-moz-range-thumb {
         width: 20px;
         height: 20px;
@@ -121,46 +117,41 @@
         box-shadow: 0 2px 6px rgba(0,0,0,0.3);
     }
 
-    .buttons {
+    /* Botón de modo de dibujo */
+    .draw-mode-btn {
         display: flex;
-        gap: 12px;
-    }
-
-    .control-btn {
-        padding: 10px 18px;
-        border: 2px solid;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 12px 20px;
+        background: rgba(20, 25, 35, 0.95);
+        backdrop-filter: blur(10px);
+        border: 2px solid rgba(245, 197, 66, 0.3);
         border-radius: 25px;
-        font-size: 0.8rem;
+        color: #f5c542;
+        font-size: 0.85rem;
         font-weight: 600;
         cursor: pointer;
         transition: all 0.2s ease;
-        backdrop-filter: blur(8px);
-        background: rgba(20, 25, 35, 0.8);
     }
 
-    .control-btn.clear {
-        border-color: #4a9eff;
-        color: #4a9eff;
+    .draw-mode-btn:hover {
+        background: rgba(245, 197, 66, 0.1);
+        border-color: rgba(245, 197, 66, 0.6);
+        transform: translateY(-1px);
     }
 
-    .control-btn.clear:hover:not(:disabled) {
-        background: #4a9eff;
-        color: #000;
+    .draw-mode-btn.active {
+        background: rgba(245, 197, 66, 0.2);
+        border-color: #f5c542;
+        box-shadow: 0 0 12px rgba(245, 197, 66, 0.3);
     }
 
-    .control-btn.clear:disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
+    .btn-icon {
+        font-size: 1.2rem;
     }
 
-    .control-btn.parcels {
-        border-color: #4ecdc4;
-        color: #4ecdc4;
-    }
-
-    .control-btn.parcels:hover,
-    .control-btn.parcels.active {
-        background: #4ecdc4;
-        color: #000;
+    .btn-text {
+        font-size: 0.85rem;
     }
 </style>
