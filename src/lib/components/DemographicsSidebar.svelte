@@ -149,15 +149,43 @@
         <span class="manzanas-count">{$selectedFeatures.length} manzanas</span>
     </header>
 
-    {#if $selectedFeatures.length === 0}
-        <div class="empty-state">
-            <div class="icon">
-                <img src={targetIcon} alt="target" />
-            </div>
-            <p>Selecciona una dirección o comuna para ver datos</p>
+    <div class="sidebar-content">
+        <!-- 3. Slot para barra de búsqueda -->
+        <div class="slot-section">
+            <slot name="search"></slot>
         </div>
-    {:else}
-        <div class="sidebar-content">
+
+        <div class="separator"></div>
+
+        <!-- 4. Slot para selector de comunas -->
+        <div class="slot-section">
+            <slot name="comunas"></slot>
+        </div>
+
+        <div class="separator"></div>
+
+        <!-- 5. Slot para Explorar Variables (Heatmap) -->
+        <div class="slot-section">
+            <slot name="heatmap"></slot>
+        </div>
+
+        <div class="separator"></div>
+
+        <!-- 6. Slot para lens control (slider + botón dibujar) -->
+        <div class="slot-section">
+            <slot name="lens-control"></slot>
+        </div>
+
+        <div class="separator"></div>
+
+        {#if $selectedFeatures.length === 0}
+            <div class="empty-state">
+                <div class="icon">
+                    <img src={targetIcon} alt="target" />
+                </div>
+                <p>Selecciona una dirección o comuna para ver datos</p>
+            </div>
+        {:else}
             <!-- 2. Datos principales -->
             <div class="quick-stats">
                 <div class="quick-stat">
@@ -172,34 +200,6 @@
                     <span class="qs-value">{$avgAge}</span>
                     <span class="qs-label">Edad prom.</span>
                 </div>
-            </div>
-
-            <div class="separator"></div>
-
-            <!-- 3. Slot para barra de búsqueda -->
-            <div class="slot-section">
-                <slot name="search"></slot>
-            </div>
-
-            <div class="separator"></div>
-
-            <!-- 4. Slot para selector de comunas -->
-            <div class="slot-section">
-                <slot name="comunas"></slot>
-            </div>
-
-            <div class="separator"></div>
-
-            <!-- 5. Slot para Explorar Variables (Heatmap) -->
-            <div class="slot-section">
-                <slot name="heatmap"></slot>
-            </div>
-
-            <div class="separator"></div>
-
-            <!-- 6. Slot para lens control (slider + botón dibujar) -->
-            <div class="slot-section">
-                <slot name="lens-control"></slot>
             </div>
 
             <div class="separator"></div>
@@ -493,8 +493,8 @@
                     {/if}
                 {/each}
             </div>
-        </div>
-    {/if}
+        {/if}
+    </div>
 </aside>
 
 <style>
@@ -540,15 +540,15 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding: 40px 24px;
+        padding: 24px 16px;
         text-align: center;
         color: rgba(255, 255, 255, 0.6);
     }
 
     .empty-state .icon {
-        width: 64px;
-        height: 64px;
-        margin-bottom: 16px;
+        width: 48px;
+        height: 48px;
+        margin-bottom: 12px;
         opacity: 0.4;
     }
 
