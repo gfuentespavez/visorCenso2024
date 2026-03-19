@@ -14,6 +14,8 @@ import babyIcon from '$lib/assets/icons/baby-11-svgrepo-com.svg';
 import houseMedicalIcon from '$lib/assets/icons/house-medical-xmark-svgrepo-com.svg';
 import noWifiIcon from '$lib/assets/icons/no-wifi-svgrepo-com.svg';
 import chartDownIcon from '$lib/assets/icons/chart-line-down-svgrepo-com.svg';
+import chartIcon from '$lib/assets/icons/chart.svg';
+import peopleIcon from '$lib/assets/icons/people.svg';
 
 // Lens state
 export const lensCenter = writable(null); // { lng, lat }
@@ -140,6 +142,28 @@ export const heatmapVariables = [
         icon: babyIcon,
         description: 'Manzanas donde niños 0-5 años son el grupo dominante',
         compareFields: ['n_edad_0_5', 'n_edad_6_13', 'n_edad_14_17', 'n_edad_18_24', 'n_edad_25_44', 'n_edad_45_59', 'n_edad_60_mas']
+    },
+    {
+        id: 'brecha_edad',
+        label: 'Brecha Etaria',
+        category: 'Demografía',
+        field: null,
+        icon: chartIcon,
+        description: 'Diferencia entre el grupo etario dominante y los demás',
+        compareFields: null,
+        vizType: 'age_gap',
+        ageFields: ['n_edad_0_5', 'n_edad_6_13', 'n_edad_14_17', 'n_edad_18_24', 'n_edad_25_44', 'n_edad_45_59', 'n_edad_60_mas'],
+        ageLabels: ['0-5', '6-13', '14-17', '18-24', '25-44', '45-59', '60+']
+    },
+    {
+        id: 'promedio_edad',
+        label: 'Promedio de Edad',
+        category: 'Demografía',
+        field: 'prom_edad',
+        icon: peopleIcon,
+        description: 'Gradiente de edad promedio por manzana',
+        compareFields: null,
+        vizType: 'gradient'
     },
     {
         id: 'hacinamiento',

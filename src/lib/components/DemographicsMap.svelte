@@ -809,6 +809,20 @@
 
         console.log(`Processing heatmap for: ${variable.label}`);
 
+        // Route to specialized processors based on vizType
+        if (variable.vizType === 'age_gap') {
+            processAgeGapHeatmap(variable);
+            return;
+        }
+        if (variable.vizType === 'gradient') {
+            processGradientHeatmap(variable);
+            return;
+        }
+
+        // Reset to default solid color for standard variables
+        map.setPaintProperty('heatmap-fill', 'fill-color', '#ff6b6b');
+        map.setPaintProperty('heatmap-fill', 'fill-opacity', 0.75);
+
         // Determine which manzanas have this variable as dominant
         const dominantFeatures = parcelsData.features
             .map(f => {
@@ -892,6 +906,95 @@
             map.getSource('heatmap-parcels').setData(turf.featureCollection([]));
             console.log(`Heatmap: No manzanas found where "${variable.label}" is dominant`);
         }
+    }
+
+    function processAgeGapHeatmap(variable) {
+        const ageFields = variable.ageFields;
+
+        const features = parcelsData.features
+            .map(f => {
+                const props = f.properties;
+                const totalPop = props.n_per || 0;
+                if (totalPop === 0) return null;
+
+                // Get percentages for each age group
+                const percentages = ageFields.map(field => (props[field] || 0) / totalPop * 100);
+
+                // Sort descending to find dominant and second
+                const sorted = [...percentages].sort((a, b) => b - a);
+                const dominantPct = sorted[0];
+                const secondPct = sorted[1] || 0;
+                const gap = dominantPct - secondPct;
+
+                // Find which group is dominant
+                const dominantIdx = percentages.indexOf(dominantPct);
+                const dominantLabel = variable.ageLabels[dominantIdx];
+
+                // Categorize the gap
+                let gapCategory;
+                if (gap >= 30) gapCategory = 3;
+                else if (gap >= 20) gapCategory = 2;
+                else if (gap >= 10) gapCategory = 1;
+                else return null; // Gap < 10%, not shown
+
+                return {
+                    ...f,
+                    properties: {
+                        ...props,
+                        gap_category: gapCategory,
+                        gap_value: Math.round(gap),
+                        dominant_group: dominantLabel
+                    }
+                };
+            })
+            .filter(f => f !== null);
+
+        // Set data-driven paint for gap categories
+        map.setPaintProperty('heatmap-fill', 'fill-color', [
+            'match',
+            ['get', 'gap_category'],
+            1, '#feca57',  // 10-20% gap - yellow
+            2, '#ff9f43',  // 20-30% gap - orange
+            3, '#ee5a24',  // >30% gap - red
+            '#feca57'      // fallback
+        ]);
+        map.setPaintProperty('heatmap-fill', 'fill-opacity', 0.8);
+
+        map.getSource('heatmap-parcels').setData(turf.featureCollection(features));
+        console.log(`Age gap heatmap: ${features.length} manzanas with gap >= 10%`);
+    }
+
+    function processGradientHeatmap(variable) {
+        // Filter manzanas with valid prom_edad
+        const features = parcelsData.features
+            .filter(f => {
+                const age = f.properties?.prom_edad;
+                return age != null && age > 0;
+            })
+            .map(f => ({
+                ...f,
+                properties: {
+                    ...f.properties,
+                    prom_edad_val: f.properties.prom_edad
+                }
+            }));
+
+        // Set gradient paint: blue (young) → yellow (mid) → red (old)
+        map.setPaintProperty('heatmap-fill', 'fill-color', [
+            'interpolate',
+            ['linear'],
+            ['get', 'prom_edad_val'],
+            15, '#00b894',   // young - green
+            25, '#00cec9',   // young-mid - teal
+            35, '#fdcb6e',   // mid - yellow
+            45, '#e17055',   // mid-old - orange
+            55, '#d63031',   // old - red
+            70, '#6c5ce7'    // very old - purple
+        ]);
+        map.setPaintProperty('heatmap-fill', 'fill-opacity', 0.8);
+
+        map.getSource('heatmap-parcels').setData(turf.featureCollection(features));
+        console.log(`Average age gradient: ${features.length} manzanas displayed`);
     }
 
     function updateAddressSearch(location) {

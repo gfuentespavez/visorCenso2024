@@ -104,16 +104,60 @@
                     </button>
                 </div>
 
-                <div class="legend">
-                    <div class="legend-title">Visualización</div>
-                    <div class="legend-info">
-                        <span class="legend-dot"></span>
-                        <span class="legend-text">Manzanas donde esta variable es dominante</span>
+                {#if $activeHeatmapVariable.vizType === 'age_gap'}
+                    <!-- Age Gap Legend -->
+                    <div class="legend">
+                        <div class="legend-title">Brecha entre grupo dominante y el resto</div>
+                        <div class="legend-items">
+                            <div class="legend-row">
+                                <span class="legend-dot" style="background: #feca57;"></span>
+                                <span class="legend-text">Diferencia de 10-20%</span>
+                            </div>
+                            <div class="legend-row">
+                                <span class="legend-dot" style="background: #ff9f43;"></span>
+                                <span class="legend-text">Diferencia de 20-30%</span>
+                            </div>
+                            <div class="legend-row">
+                                <span class="legend-dot" style="background: #ee5a24;"></span>
+                                <span class="legend-text">Diferencia mayor a 30%</span>
+                            </div>
+                        </div>
+                        <div class="legend-note">
+                            Se muestra la diferencia porcentual entre el grupo etario dominante y el segundo grupo en cada manzana.
+                        </div>
                     </div>
-                    <div class="legend-note">
-                        Solo se muestran áreas donde "{$activeHeatmapVariable.label}" lidera sobre las demás opciones.
+                {:else if $activeHeatmapVariable.vizType === 'gradient'}
+                    <!-- Average Age Gradient Legend -->
+                    <div class="legend">
+                        <div class="legend-title">Edad Promedio</div>
+                        <div class="legend-gradient-bar">
+                            <div class="gradient-bar age-gradient"></div>
+                            <div class="gradient-labels">
+                                <span>15</span>
+                                <span>25</span>
+                                <span>35</span>
+                                <span>45</span>
+                                <span>55</span>
+                                <span>70+</span>
+                            </div>
+                        </div>
+                        <div class="legend-note">
+                            Color más cálido indica mayor edad promedio en la manzana.
+                        </div>
                     </div>
-                </div>
+                {:else}
+                    <!-- Default Legend -->
+                    <div class="legend">
+                        <div class="legend-title">Visualización</div>
+                        <div class="legend-info">
+                            <span class="legend-dot"></span>
+                            <span class="legend-text">Manzanas donde esta variable es dominante</span>
+                        </div>
+                        <div class="legend-note">
+                            Solo se muestran áreas donde "{$activeHeatmapVariable.label}" lidera sobre las demás opciones.
+                        </div>
+                    </div>
+                {/if}
             {/if}
         </div>
     {/if}
@@ -395,6 +439,51 @@
         font-style: italic;
         padding-top: 8px;
         border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .legend-items {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 8px;
+    }
+
+    .legend-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .legend-gradient-bar {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 8px;
+    }
+
+    .gradient-bar {
+        height: 12px;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .gradient-bar.age-gradient {
+        background: linear-gradient(to right,
+            #00b894 0%,
+            #00cec9 18%,
+            #fdcb6e 36%,
+            #e17055 55%,
+            #d63031 73%,
+            #6c5ce7 100%
+        );
+    }
+
+    .gradient-labels {
+        display: flex;
+        justify-content: space-between;
+        color: #aaa;
+        font-size: 0.6rem;
+        padding: 0 2px;
     }
 
     /* Scrollbar */
