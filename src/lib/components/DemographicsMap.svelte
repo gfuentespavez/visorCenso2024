@@ -32,7 +32,6 @@
     let selectedRing = null; // 'r500', 'r1k', or 'r3k'
     let prevDrawMode = false; // Track previous draw mode state to detect transitions
     let prevSearchLocation = null; // Track previous search location to detect changes
-    let tooltip = null; // Mapbox popup for hover tooltip
     let modalData = null; // Feature data for click modal
 
     // Age field config for tooltip/modal
@@ -123,20 +122,7 @@
             // Activate lens by default (cursor-following mode)
             isLensActive.set(true);
 
-            // Tooltip on hover over heatmap and parcel layers
-            tooltip = new mapboxgl.Popup({
-                closeButton: false,
-                closeOnClick: false,
-                className: 'manzana-tooltip',
-                maxWidth: '280px'
-            });
-
-            map.on('mousemove', 'heatmap-fill', handleHeatmapHover);
-            map.on('mouseleave', 'heatmap-fill', () => tooltip.remove());
-            map.on('mousemove', 'parcels-fill-selected', handleParcelHover);
-            map.on('mouseleave', 'parcels-fill-selected', () => tooltip.remove());
-
-            // Click on heatmap or selected parcels for modal
+            // Click on heatmap manzanas for modal (no hover tooltips)
             map.on('click', 'heatmap-fill', handleManzanaClick);
             map.on('click', 'parcels-fill-selected', handleManzanaClick);
         });
@@ -153,79 +139,37 @@
         // Click to lock/unlock lens
         map.on('click', handleClick);
 
+        // ESC to clear lens selection or close modal
+        function handleKeyDown(e) {
+            if (e.key !== 'Escape') return;
+            if (modalData) { closeModal(); return; }
+            if (lensLocked) clearLensSelection();
+        }
+        window.addEventListener('keydown', handleKeyDown);
+
         return () => {
             if (map) map.remove();
+            window.removeEventListener('keydown', handleKeyDown);
         };
     });
 
-    // === TOOLTIP & MODAL HANDLERS ===
-    function buildAgeTooltip(props) {
-        const totalPop = props.n_per || 0;
-        if (totalPop === 0) return '<div class="tt-empty">Sin datos de población</div>';
-
-        const groups = ageConfig.map(g => ({
-            label: g.label,
-            count: props[g.field] || 0,
-            pct: ((props[g.field] || 0) / totalPop * 100).toFixed(1)
-        })).sort((a, b) => b.count - a.count);
-
-        const dominant = groups[0];
-        const second = groups[1];
-
-        let html = `<div class="tt-title">${props.comuna || 'Manzana'}</div>`;
-        html += `<div class="tt-pop">Población: <strong>${totalPop}</strong> | Edad prom: <strong>${(props.prom_edad || 0).toFixed(1)}</strong></div>`;
-        html += `<div class="tt-dominant">Grupo dominante: <strong>${dominant.label} años</strong> (${dominant.pct}%)</div>`;
-        if (second) {
-            const gap = (dominant.count - second.count) / totalPop * 100;
-            html += `<div class="tt-gap">Brecha con ${second.label}: <strong>${gap.toFixed(1)}%</strong></div>`;
-        }
-        html += '<div class="tt-bars">';
-        groups.forEach(g => {
-            const isDom = g.label === dominant.label;
-            html += `<div class="tt-bar-row">
-                <span class="tt-bar-label">${g.label}</span>
-                <div class="tt-bar-track"><div class="tt-bar-fill${isDom ? ' dominant' : ''}" style="width:${g.pct}%"></div></div>
-                <span class="tt-bar-pct">${g.pct}%</span>
-            </div>`;
-        });
-        html += '</div>';
-        return html;
-    }
-
-    function buildGeneralTooltip(props) {
-        const totalPop = props.n_per || 0;
-        let html = `<div class="tt-title">${props.comuna || 'Manzana'}</div>`;
-        html += `<div class="tt-pop">Población: <strong>${totalPop}</strong></div>`;
-        if (props.prom_edad) html += `<div class="tt-pop">Edad prom: <strong>${props.prom_edad.toFixed(1)}</strong></div>`;
-        html += `<div class="tt-pop">Hogares: <strong>${props.n_hog || 0}</strong> | Viviendas: <strong>${props.n_vp || 0}</strong></div>`;
-        return html;
-    }
-
-    function handleHeatmapHover(e) {
-        if (!e.features || e.features.length === 0) return;
-        map.getCanvas().style.cursor = 'pointer';
-        const props = e.features[0].properties;
-        const html = $activeHeatmapVariable?.vizType === 'age_gap' || $activeHeatmapVariable?.vizType === 'gradient'
-            ? buildAgeTooltip(props)
-            : buildGeneralTooltip(props);
-        tooltip.setLngLat(e.lngLat).setHTML(html).addTo(map);
-    }
-
-    function handleParcelHover(e) {
-        if (!e.features || e.features.length === 0 || $visualizationMode === 'heatmap') return;
-        map.getCanvas().style.cursor = 'pointer';
-        const props = e.features[0].properties;
-        tooltip.setLngLat(e.lngLat).setHTML(buildGeneralTooltip(props)).addTo(map);
-    }
-
+    // === MODAL HANDLERS ===
     function handleManzanaClick(e) {
         if (!e.features || e.features.length === 0) return;
+        if ($visualizationMode !== 'heatmap') return; // Only open modal in heatmap mode
         e.originalEvent.stopPropagation();
         modalData = e.features[0].properties;
     }
 
     function closeModal() {
         modalData = null;
+    }
+
+    function clearLensSelection() {
+        lensLocked = false;
+        isLensActive.set(false);
+        selectedFeatures.set([]);
+        clearLensVisuals();
     }
 
     function getAgeGroups(props) {
@@ -380,58 +324,87 @@
             }
         });
 
-        // === LENS CIRCLE (glassmorphism) ===
+        // === LENS CIRCLE (glassmorphism — matching .glass-card) ===
         map.addSource('lens-circle', {
             type: 'geojson',
             data: turf.featureCollection([])
         });
 
-        // Glassmorphism fill — subtle frosted tint
+        // Layer 1: Outer dark shadow — box-shadow: 0 8px 32px rgba(0,0,0,0.1)
+        map.addLayer({
+            id: 'lens-shadow',
+            type: 'line',
+            source: 'lens-circle',
+            paint: {
+                'line-color': '#000000',
+                'line-width': 24,
+                'line-opacity': 0.1,
+                'line-blur': 20,
+                'line-offset': 4
+            }
+        });
+
+        // Layer 2: Glass fill — background: rgba(255,255,255,0.28)
         map.addLayer({
             id: 'lens-fill',
             type: 'fill',
             source: 'lens-circle',
             paint: {
                 'fill-color': '#ffffff',
-                'fill-opacity': 0.06
+                'fill-opacity': 0.15
             }
         });
 
-        // Outer glow ring
+        // Layer 3: Inset inner glow — inset 0 0 26px 13px rgba(255,255,255,1.3)
         map.addLayer({
-            id: 'lens-outline-glow',
+            id: 'lens-inner-glow',
             type: 'line',
             source: 'lens-circle',
             paint: {
                 'line-color': '#ffffff',
-                'line-width': 8,
-                'line-opacity': 0.08,
-                'line-blur': 6
+                'line-width': 20,
+                'line-opacity': 0.12,
+                'line-blur': 16,
+                'line-offset': -10
             }
         });
 
-        // Main outline ring
+        // Layer 4: Inset top highlight — inset 0 1px 0 rgba(255,255,255,0.5)
+        map.addLayer({
+            id: 'lens-highlight',
+            type: 'line',
+            source: 'lens-circle',
+            paint: {
+                'line-color': '#ffffff',
+                'line-width': 1,
+                'line-opacity': 0.5,
+                'line-offset': -1
+            }
+        });
+
+        // Layer 5: Main border — border: 1px solid rgba(255,255,255,0.3)
         map.addLayer({
             id: 'lens-outline',
             type: 'line',
             source: 'lens-circle',
             paint: {
                 'line-color': '#ffffff',
-                'line-width': 1.5,
-                'line-opacity': 0.7
+                'line-width': 1,
+                'line-opacity': 0.3
             }
         });
 
-        // Inner highlight ring
+        // Layer 6: Top edge shine — ::before gradient
         map.addLayer({
-            id: 'lens-outline-inner',
+            id: 'lens-edge-shine',
             type: 'line',
             source: 'lens-circle',
             paint: {
                 'line-color': '#ffffff',
-                'line-width': 0.5,
-                'line-opacity': 0.3,
-                'line-offset': -3
+                'line-width': 2,
+                'line-opacity': 0.35,
+                'line-blur': 1,
+                'line-offset': 1
             }
         });
 
@@ -441,28 +414,29 @@
             data: turf.featureCollection([])
         });
 
-        // Center point glow
+        // Center point soft glow
         map.addLayer({
             id: 'lens-center-glow',
             type: 'circle',
             source: 'lens-center',
             paint: {
-                'circle-radius': 14,
+                'circle-radius': 16,
                 'circle-color': '#f5c542',
-                'circle-opacity': 0.15,
+                'circle-opacity': 0.12,
                 'circle-blur': 1
             }
         });
 
+        // Center point
         map.addLayer({
             id: 'lens-center-point',
             type: 'circle',
             source: 'lens-center',
             paint: {
-                'circle-radius': 5,
+                'circle-radius': 4,
                 'circle-color': '#f5c542',
                 'circle-stroke-width': 1.5,
-                'circle-stroke-color': 'rgba(255,255,255,0.8)'
+                'circle-stroke-color': 'rgba(255,255,255,0.6)'
             }
         });
 
@@ -769,17 +743,15 @@
 
         if ($drawMode) return; // Ignore clicks in draw mode
 
-        // Toggle lens lock state
-        lensLocked = !lensLocked;
-
         if (lensLocked) {
-            // Lock lens at current position
+            // Second click — clear selection and unlock
+            clearLensSelection();
+        } else {
+            // First click — lock lens at current position
+            lensLocked = true;
             const { lng, lat } = e.lngLat;
             lensCenter.set({ lng, lat });
             updateLens(lng, lat);
-        } else {
-            // Unlock lens - will follow cursor again
-            isLensActive.set(true);
         }
     }
 
@@ -844,19 +816,29 @@
         updateLens($lensCenter.lng, $lensCenter.lat);
     }
 
-    // React to lock state - change lens appearance (glassmorphism)
+    // React to lock state - shift glassmorphism tint to gold when locked
     $: if (mapReady && map && map.getLayer('lens-outline')) {
-        map.setPaintProperty('lens-outline', 'line-color', lensLocked ? '#f5c542' : '#ffffff');
-        map.setPaintProperty('lens-outline', 'line-width', lensLocked ? 2 : 1.5);
-        map.setPaintProperty('lens-outline', 'line-opacity', lensLocked ? 0.9 : 0.7);
-        map.setPaintProperty('lens-outline-glow', 'line-color', lensLocked ? '#f5c542' : '#ffffff');
-        map.setPaintProperty('lens-outline-glow', 'line-opacity', lensLocked ? 0.15 : 0.08);
-        map.setPaintProperty('lens-outline-inner', 'line-color', lensLocked ? '#f5c542' : '#ffffff');
-        map.setPaintProperty('lens-fill', 'fill-color', lensLocked ? '#f5c542' : '#ffffff');
-        map.setPaintProperty('lens-fill', 'fill-opacity', lensLocked ? 0.08 : 0.06);
-        map.setPaintProperty('lens-center-glow', 'circle-color', lensLocked ? '#f5c542' : '#f5c542');
-        map.setPaintProperty('lens-center-glow', 'circle-opacity', lensLocked ? 0.25 : 0.15);
-        map.setPaintProperty('lens-center-point', 'circle-radius', lensLocked ? 6 : 5);
+        const c = lensLocked ? '#f5c542' : '#ffffff';
+        // Fill tint
+        map.setPaintProperty('lens-fill', 'fill-color', c);
+        map.setPaintProperty('lens-fill', 'fill-opacity', lensLocked ? 0.18 : 0.15);
+        // Border
+        map.setPaintProperty('lens-outline', 'line-color', c);
+        map.setPaintProperty('lens-outline', 'line-opacity', lensLocked ? 0.5 : 0.3);
+        // Inner glow
+        map.setPaintProperty('lens-inner-glow', 'line-color', c);
+        map.setPaintProperty('lens-inner-glow', 'line-opacity', lensLocked ? 0.18 : 0.12);
+        // Highlight
+        map.setPaintProperty('lens-highlight', 'line-color', c);
+        map.setPaintProperty('lens-highlight', 'line-opacity', lensLocked ? 0.6 : 0.5);
+        // Edge shine
+        map.setPaintProperty('lens-edge-shine', 'line-color', c);
+        map.setPaintProperty('lens-edge-shine', 'line-opacity', lensLocked ? 0.5 : 0.35);
+        // Shadow intensify
+        map.setPaintProperty('lens-shadow', 'line-opacity', lensLocked ? 0.15 : 0.1);
+        // Center
+        map.setPaintProperty('lens-center-glow', 'circle-opacity', lensLocked ? 0.2 : 0.12);
+        map.setPaintProperty('lens-center-point', 'circle-radius', lensLocked ? 5 : 4);
     }
 
     // React to address search location changes - only when searchLocation actually changes
@@ -883,7 +865,7 @@
             // Activar modo de dibujo
             draw.changeMode('draw_polygon');
             // Ocultar todas las capas del lente
-            ['lens-outline', 'lens-outline-glow', 'lens-outline-inner', 'lens-fill', 'lens-center-point', 'lens-center-glow'].forEach(id => {
+            ['lens-shadow', 'lens-fill', 'lens-inner-glow', 'lens-highlight', 'lens-outline', 'lens-edge-shine', 'lens-center-point', 'lens-center-glow'].forEach(id => {
                 if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
             });
             // Limpiar lente
@@ -895,7 +877,7 @@
             draw.deleteAll();
             drawnPolygon.set(null);
             // Mostrar todas las capas del lente
-            ['lens-outline', 'lens-outline-glow', 'lens-outline-inner', 'lens-fill', 'lens-center-point', 'lens-center-glow'].forEach(id => {
+            ['lens-shadow', 'lens-fill', 'lens-inner-glow', 'lens-highlight', 'lens-outline', 'lens-edge-shine', 'lens-center-point', 'lens-center-glow'].forEach(id => {
                 if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible');
             });
             // Limpiar selección only when exiting draw mode
@@ -967,6 +949,10 @@
         }
         if (variable.vizType === 'gradient') {
             processGradientHeatmap(variable);
+            return;
+        }
+        if (variable.vizType === 'heating_gap') {
+            processHeatingGapHeatmap(variable);
             return;
         }
 
@@ -1133,6 +1119,82 @@
         console.log(`Age gap heatmap: ${features.length} manzanas`);
     }
 
+    function processHeatingGapHeatmap(variable) {
+        map.setLayoutProperty('heatmap-outline', 'visibility', 'none');
+
+        const fields = variable.heatingFields;
+        const labels = variable.heatingLabels;
+
+        const features = parcelsData.features
+            .map(f => {
+                const props = f.properties;
+
+                const groups = fields.map((field, idx) => ({
+                    count: props[field] || 0,
+                    idx
+                }));
+
+                const total = groups.reduce((sum, g) => sum + g.count, 0);
+                if (total === 0) return null;
+
+                const sorted = [...groups].sort((a, b) => b.count - a.count);
+                const dominant = sorted[0];
+                const second = sorted[1];
+
+                if (dominant.count === 0) return null;
+
+                const gap = (dominant.count - (second?.count || 0)) / total * 100;
+
+                // Gap tier: 1 = ≤5%, 2 = 5-10%, 3 = >10%
+                let tier;
+                if (gap <= 5) tier = 1;
+                else if (gap <= 10) tier = 2;
+                else tier = 3;
+
+                // Encode: dominant source index (0-3) * 10 + tier (1-3)
+                const heatCode = dominant.idx * 10 + tier;
+
+                return {
+                    ...f,
+                    properties: {
+                        ...props,
+                        heat_code: heatCode,
+                        gap_value: Math.round(gap),
+                        dominant_heating: labels[dominant.idx],
+                        second_heating: labels[second?.idx ?? 0]
+                    }
+                };
+            })
+            .filter(f => f !== null);
+
+        // 4 sources × 3 tiers = 12 colors
+        // Leña: browns | Gas: oranges | Parafina: blues | Electricidad: yellows
+        map.setPaintProperty('heatmap-fill', 'fill-color', [
+            'match', ['get', 'heat_code'],
+            // Leña (idx 0)
+            1,  '#D7A876',  // ≤5%
+            2,  '#A0522D',  // 5-10%
+            3,  '#5C2300',  // >10%
+            // Gas (idx 1)
+            11, '#FFCC80',  // ≤5%
+            12, '#FF9800',  // 5-10%
+            13, '#E65100',  // >10%
+            // Parafina (idx 2)
+            21, '#90CAF9',  // ≤5%
+            22, '#2196F3',  // 5-10%
+            23, '#0D47A1',  // >10%
+            // Electricidad (idx 3)
+            31, '#FFF176',  // ≤5%
+            32, '#FFD600',  // 5-10%
+            33, '#F57F17',  // >10%
+            '#9e9e9e'
+        ]);
+        map.setPaintProperty('heatmap-fill', 'fill-opacity', 0.85);
+
+        map.getSource('heatmap-parcels').setData(turf.featureCollection(features));
+        console.log(`Heating gap heatmap: ${features.length} manzanas`);
+    }
+
     function processGradientHeatmap(variable) {
         // Hide outline for this visualization
         map.setLayoutProperty('heatmap-outline', 'visibility', 'none');
@@ -1215,8 +1277,8 @@
         console.log(`Type: ${type}, Point: [${lng}, ${lat}]`);
         if (bounds) console.log('Bounds:', bounds);
 
-        // Only create radius circles for ADDRESS mode, not for COMUNA mode
-        if (type !== 'comuna') {
+        // Only create radius circles for ADDRESS mode, not for COMUNA/MULTI-COMUNA mode
+        if (type !== 'comuna' && type !== 'multi-comuna') {
             console.log('Creating radius circles for address search');
 
             // Create the three radius circles
@@ -1248,7 +1310,7 @@
 
             console.log('Radios created with default styles');
         } else {
-            console.log('COMUNA mode: hiding radius circles');
+            console.log('COMUNA/MULTI-COMUNA mode: hiding radius circles');
 
             // Hide all radius circles and marker for comuna mode
             map.getSource('radius-500m').setData(turf.featureCollection([]));
@@ -1264,7 +1326,16 @@
         // Find all manzanas within area
         let allSelected;
 
-        if (type === 'comuna' && location.name) {
+        if (type === 'multi-comuna' && location.names) {
+            console.log('=== MULTI-COMUNA MODE ===');
+            console.log(`Filtering by comunas: ${location.names.join(', ')}`);
+            const namesLower = location.names.map(n => n.toLowerCase().trim());
+            allSelected = parcelsData.features.filter(feature => {
+                const comunaName = feature.properties?.comuna;
+                return comunaName && namesLower.includes(comunaName.toLowerCase().trim());
+            });
+            console.log(`Found ${allSelected.length} features across ${location.names.length} comunas`);
+        } else if (type === 'comuna' && location.name) {
             console.log('=== COMUNA MODE ===');
             console.log(`Filtering by comuna name: "${location.name}"`);
 
@@ -1318,8 +1389,8 @@
         }
 
         // Fly to the location
-        if (type === 'comuna' && bounds) {
-            console.log('Flying to comuna bounds');
+        if ((type === 'comuna' || type === 'multi-comuna') && bounds) {
+            console.log('Flying to bounds');
             map.fitBounds(bounds, { padding: 50, duration: 1500 });
         } else {
             console.log('Flying to address point');
@@ -1563,110 +1634,6 @@
         color: #aaa;
         font-size: 0.65rem;
         padding: 0 2px;
-    }
-
-    /* === TOOLTIP STYLES === */
-    :global(.manzana-tooltip .mapboxgl-popup-content) {
-        background: rgba(15, 20, 30, 0.95);
-        backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 10px;
-        padding: 12px 14px;
-        color: #fff;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-    }
-
-    :global(.manzana-tooltip .mapboxgl-popup-tip) {
-        border-top-color: rgba(15, 20, 30, 0.95);
-    }
-
-    :global(.tt-title) {
-        font-weight: 700;
-        font-size: 0.8rem;
-        margin-bottom: 4px;
-        color: #f5c542;
-    }
-
-    :global(.tt-pop) {
-        font-size: 0.7rem;
-        color: #bbb;
-        margin-bottom: 3px;
-    }
-
-    :global(.tt-pop strong) {
-        color: #fff;
-    }
-
-    :global(.tt-dominant) {
-        font-size: 0.7rem;
-        color: #ccc;
-        margin: 6px 0 2px;
-        padding-top: 6px;
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
-    :global(.tt-dominant strong) {
-        color: #f5c542;
-    }
-
-    :global(.tt-gap) {
-        font-size: 0.7rem;
-        color: #aaa;
-        margin-bottom: 6px;
-    }
-
-    :global(.tt-gap strong) {
-        color: #fff;
-    }
-
-    :global(.tt-bars) {
-        display: flex;
-        flex-direction: column;
-        gap: 3px;
-        margin-top: 4px;
-    }
-
-    :global(.tt-bar-row) {
-        display: grid;
-        grid-template-columns: 30px 1fr 36px;
-        align-items: center;
-        gap: 6px;
-    }
-
-    :global(.tt-bar-label) {
-        font-size: 0.6rem;
-        color: #999;
-    }
-
-    :global(.tt-bar-track) {
-        height: 6px;
-        background: rgba(255, 255, 255, 0.1);
-        border-radius: 3px;
-        overflow: hidden;
-    }
-
-    :global(.tt-bar-fill) {
-        height: 100%;
-        background: rgba(255, 255, 255, 0.35);
-        border-radius: 3px;
-        transition: width 0.2s ease;
-    }
-
-    :global(.tt-bar-fill.dominant) {
-        background: #f5c542;
-    }
-
-    :global(.tt-bar-pct) {
-        font-size: 0.6rem;
-        color: #aaa;
-        text-align: right;
-    }
-
-    :global(.tt-empty) {
-        color: #666;
-        font-size: 0.7rem;
-        font-style: italic;
     }
 
     /* === MODAL STYLES === */

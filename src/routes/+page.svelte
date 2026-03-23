@@ -21,9 +21,10 @@
     let showDropdown = false;
     let searchLoading = false;
     let selectedAddress = null;
-    let selectedComuna = null;
+    let selectedComunas = []; // array of { name, bounds }
     let debounceTimer;
     let showComunasDropdown = false;
+    let showAddComunaDropdown = false;
 
     // Comunas (14 total)
     const comunas = [
@@ -93,10 +94,11 @@
 
     function selectAddress(feature) {
         selectedAddress = feature;
-        selectedComuna = null;
+        selectedComunas = [];
         searchQuery = feature.place_name;
         showDropdown = false;
         showComunasDropdown = false;
+        showAddComunaDropdown = false;
         suggestions = [];
 
         searchLocation = {
@@ -113,30 +115,66 @@
     }
 
     function selectComuna(comuna) {
-        selectedComuna = comuna;
+        selectedComunas = [comuna];
         selectedAddress = null;
         searchQuery = '';
         showDropdown = false;
         showComunasDropdown = false;
+        showAddComunaDropdown = false;
+        updateSearchLocation();
+    }
 
-        const [[minLng, minLat], [maxLng, maxLat]] = comuna.bounds;
-        const centerLng = (minLng + maxLng) / 2;
-        const centerLat = (minLat + maxLat) / 2;
+    function addComuna(comuna) {
+        if (selectedComunas.find(c => c.name === comuna.name)) return;
+        selectedComunas = [...selectedComunas, comuna];
+        showAddComunaDropdown = false;
+        updateSearchLocation();
+    }
 
-        searchLocation = {
-            type: 'comuna',
-            lng: centerLng,
-            lat: centerLat,
-            name: comuna.name,
-            bounds: comuna.bounds
-        };
+    function removeComuna(name) {
+        selectedComunas = selectedComunas.filter(c => c.name !== name);
+        if (selectedComunas.length === 0) {
+            clearSelection();
+        } else {
+            updateSearchLocation();
+        }
+    }
+
+    function updateSearchLocation() {
+        if (selectedComunas.length === 0) {
+            searchLocation = null;
+            return;
+        }
+        if (selectedComunas.length === 1) {
+            const c = selectedComunas[0];
+            const [[minLng, minLat], [maxLng, maxLat]] = c.bounds;
+            searchLocation = {
+                type: 'comuna',
+                lng: (minLng + maxLng) / 2,
+                lat: (minLat + maxLat) / 2,
+                name: c.name,
+                bounds: c.bounds
+            };
+        } else {
+            const allBounds = selectedComunas.map(c => c.bounds);
+            const minLng = Math.min(...allBounds.map(b => b[0][0]));
+            const minLat = Math.min(...allBounds.map(b => b[0][1]));
+            const maxLng = Math.max(...allBounds.map(b => b[1][0]));
+            const maxLat = Math.max(...allBounds.map(b => b[1][1]));
+            searchLocation = {
+                type: 'multi-comuna',
+                names: selectedComunas.map(c => c.name),
+                bounds: [[minLng, minLat], [maxLng, maxLat]]
+            };
+        }
     }
 
     function clearSelection() {
         selectedAddress = null;
-        selectedComuna = null;
+        selectedComunas = [];
         searchQuery = '';
         searchLocation = null;
+        showAddComunaDropdown = false;
         if (mapComponent) {
             mapComponent.clearAddressSearch();
         }
@@ -215,7 +253,7 @@
                         {#each comunas as comuna}
                             <button
                                     class="comuna-btn"
-                                    class:selected={selectedComuna?.name === comuna.name}
+                                    class:selected={selectedComunas.some(c => c.name === comuna.name)}
                                     on:click={() => selectComuna(comuna)}
                             >
                                 {comuna.name}
@@ -224,12 +262,33 @@
                     </div>
                 {/if}
 
-                {#if selectedComuna}
+                {#each selectedComunas as comuna}
                     <div class="selected-badge">
                         <span class="badge-icon">🏘️</span>
-                        <span class="badge-text">{selectedComuna.name}</span>
-                        <button class="badge-clear" on:click={clearSelection}>✕</button>
+                        <span class="badge-text">{comuna.name}</span>
+                        <button class="badge-clear" on:click={() => removeComuna(comuna.name)}>✕</button>
                     </div>
+                {/each}
+
+                {#if selectedComunas.length > 0}
+                    <button class="add-comuna-btn" on:click={() => showAddComunaDropdown = !showAddComunaDropdown}>
+                        <span>+</span>
+                        <span>Agrega otra comuna</span>
+                        <span class="chevron">{showAddComunaDropdown ? '▼' : '▶'}</span>
+                    </button>
+
+                    {#if showAddComunaDropdown}
+                        <div class="comunas-grid">
+                            {#each comunas.filter(c => !selectedComunas.some(s => s.name === c.name)) as comuna}
+                                <button
+                                        class="comuna-btn"
+                                        on:click={() => addComuna(comuna)}
+                                >
+                                    {comuna.name}
+                                </button>
+                            {/each}
+                        </div>
+                    {/if}
                 {/if}
             </div>
 
@@ -247,7 +306,7 @@
 
     <!-- Top right action buttons -->
     <div class="top-actions">
-        <button class="action-btn" on:click={clearSelection} disabled={!selectedAddress && !selectedComuna}>
+        <button class="action-btn" on:click={clearSelection} disabled={!selectedAddress && selectedComunas.length === 0}>
             <span class="btn-icon">🗑️</span>
             <span class="btn-label">Borrar Selección</span>
         </button>
@@ -516,6 +575,39 @@
     }
 
     .badge-clear:hover {
+        color: #ffcc05;
+    }
+
+    .add-comuna-btn {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        margin-top: 8px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px dashed rgba(255, 204, 5, 0.3);
+        border-radius: 10px;
+        color: rgba(255, 204, 5, 0.8);
+        font-size: 0.82rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .add-comuna-btn span:nth-child(1) {
+        font-size: 1.1rem;
+        font-weight: 400;
+    }
+
+    .add-comuna-btn span:nth-child(2) {
+        flex: 1;
+        text-align: left;
+    }
+
+    .add-comuna-btn:hover {
+        background: rgba(255, 204, 5, 0.08);
+        border-color: rgba(255, 204, 5, 0.5);
         color: #ffcc05;
     }
 

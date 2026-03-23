@@ -118,7 +118,8 @@
     $: energyData = {
         lena: $selectedFeatures.reduce((sum, f) => sum + (f.properties?.n_comb_calefaccion_lena || 0), 0),
         gas: $selectedFeatures.reduce((sum, f) => sum + (f.properties?.n_comb_calefaccion_gas || 0), 0),
-        electricidad: $selectedFeatures.reduce((sum, f) => sum + (f.properties?.n_comb_calefaccion_electricidad || 0), 0)
+        electricidad: $selectedFeatures.reduce((sum, f) => sum + (f.properties?.n_comb_calefaccion_electricidad || 0), 0),
+        parafina: $selectedFeatures.reduce((sum, f) => sum + (f.properties?.n_comb_calefaccion_parafina || 0), 0)
     };
 
     $: tenureData = computeTenure($selectedFeatures);
@@ -459,26 +460,33 @@
 
                                     {:else if cat.id === 'energia'}
                                         <div class="energy-grid">
-                                            <div class="energy-item" class:dominant={energyData.lena > energyData.gas && energyData.lena > energyData.electricidad}>
+                                            <div class="energy-item" class:dominant={energyData.lena >= energyData.gas && energyData.lena >= energyData.electricidad && energyData.lena >= energyData.parafina && energyData.lena > 0}>
                                                 <span class="e-icon">
                                                     <img src={woodIcon} alt="Leña" />
                                                 </span>
                                                 <span class="e-value">{energyData.lena}</span>
                                                 <span class="e-label">Leña</span>
                                             </div>
-                                            <div class="energy-item" class:dominant={energyData.gas > energyData.lena && energyData.gas > energyData.electricidad}>
+                                            <div class="energy-item" class:dominant={energyData.gas >= energyData.lena && energyData.gas >= energyData.electricidad && energyData.gas >= energyData.parafina && energyData.gas > 0}>
                                                 <span class="e-icon">
                                                     <img src={gasIcon} alt="Gas" />
                                                 </span>
                                                 <span class="e-value">{energyData.gas}</span>
                                                 <span class="e-label">Gas</span>
                                             </div>
-                                            <div class="energy-item" class:dominant={energyData.electricidad > energyData.lena && energyData.electricidad > energyData.gas}>
+                                            <div class="energy-item" class:dominant={energyData.electricidad >= energyData.lena && energyData.electricidad >= energyData.gas && energyData.electricidad >= energyData.parafina && energyData.electricidad > 0}>
                                                 <span class="e-icon">
                                                     <img src={electricityIcon} alt="Eléctrica" />
                                                 </span>
                                                 <span class="e-value">{energyData.electricidad}</span>
                                                 <span class="e-label">Eléctrica</span>
+                                            </div>
+                                            <div class="energy-item" class:dominant={energyData.parafina >= energyData.lena && energyData.parafina >= energyData.gas && energyData.parafina >= energyData.electricidad && energyData.parafina > 0}>
+                                                <span class="e-icon">
+                                                    <img src={flameIcon} alt="Parafina" />
+                                                </span>
+                                                <span class="e-value">{energyData.parafina}</span>
+                                                <span class="e-label">Parafina</span>
                                             </div>
                                         </div>
                                     {/if}
@@ -1084,7 +1092,7 @@
     /* Energy */
     .energy-grid {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(4, 1fr);
         gap: 10px;
     }
 

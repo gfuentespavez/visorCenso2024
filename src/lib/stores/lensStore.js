@@ -16,6 +16,7 @@ import noWifiIcon from '$lib/assets/icons/no-wifi-svgrepo-com.svg';
 import chartDownIcon from '$lib/assets/icons/chart-line-down-svgrepo-com.svg';
 import chartIcon from '$lib/assets/icons/chart.svg';
 import peopleIcon from '$lib/assets/icons/people.svg';
+import flameIcon from '$lib/assets/icons/flame-svgrepo-com.svg';
 
 // Lens state
 export const lensCenter = writable(null); // { lng, lat }
@@ -164,6 +165,18 @@ export const heatmapVariables = [
         description: 'Gradiente de edad promedio por manzana',
         compareFields: null,
         vizType: 'gradient'
+    },
+    {
+        id: 'calefaccion',
+        label: 'Calefacción',
+        category: 'Vivienda',
+        field: null,
+        icon: flameIcon,
+        description: 'Fuente de calefacción dominante y brecha con la segunda opción',
+        compareFields: null,
+        vizType: 'heating_gap',
+        heatingFields: ['n_comb_calefaccion_lena', 'n_comb_calefaccion_gas', 'n_comb_calefaccion_parafina', 'n_comb_calefaccion_electricidad'],
+        heatingLabels: ['Leña', 'Gas', 'Parafina', 'Electricidad']
     },
     {
         id: 'hacinamiento',

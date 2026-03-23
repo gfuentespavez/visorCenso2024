@@ -85,7 +85,41 @@
             </div>
 
             {#if $activeHeatmapVariable}
-                {#if $activeHeatmapVariable.vizType === 'age_gap'}
+                {#if $activeHeatmapVariable.vizType === 'heating_gap'}
+                    <!-- Heating Gap Legend -->
+                    <div class="legend">
+                        <div class="legend-header">
+                            <div class="legend-title">Calefacción dominante por Manzana</div>
+                            <button class="clear-var-btn" on:click={clearVariable}>Limpiar</button>
+                        </div>
+                        <div class="legend-desc">
+                            Color por fuente dominante. Intensidad según la brecha con la segunda opción.
+                        </div>
+
+                        {#each [
+                            { label: 'Leña',         colors: ['#D7A876','#A0522D','#5C2300'] },
+                            { label: 'Gas',          colors: ['#FFCC80','#FF9800','#E65100'] },
+                            { label: 'Parafina',     colors: ['#90CAF9','#2196F3','#0D47A1'] },
+                            { label: 'Electricidad', colors: ['#FFF176','#FFD600','#F57F17'] }
+                        ] as source}
+                            <div class="legend-section-label">{source.label}</div>
+                            <div class="legend-items">
+                                <div class="legend-row">
+                                    <span class="legend-dot" style="background:{source.colors[0]}; border-color:{source.colors[0]}80;"></span>
+                                    <span class="legend-text">Brecha ≤ 5%</span>
+                                </div>
+                                <div class="legend-row">
+                                    <span class="legend-dot" style="background:{source.colors[1]}; border-color:{source.colors[1]}80;"></span>
+                                    <span class="legend-text">Brecha 5-10%</span>
+                                </div>
+                                <div class="legend-row">
+                                    <span class="legend-dot" style="background:{source.colors[2]}; border-color:{source.colors[2]}80;"></span>
+                                    <span class="legend-text">Brecha > 10%</span>
+                                </div>
+                            </div>
+                        {/each}
+                    </div>
+                {:else if $activeHeatmapVariable.vizType === 'age_gap'}
                     <!-- Age Gap Legend - directly below variable button -->
                     <div class="legend">
                         <div class="legend-header">
