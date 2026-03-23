@@ -85,51 +85,54 @@
             </div>
 
             {#if $activeHeatmapVariable}
-                <div class="active-variable">
-                    <div class="active-header">
-                        <span class="active-icon">
-                            {#if $activeHeatmapVariable.icon.length < 5}
-                                {$activeHeatmapVariable.icon}
-                            {:else}
-                                <img src={$activeHeatmapVariable.icon} alt={$activeHeatmapVariable.label} />
-                            {/if}
-                        </span>
-                        <div class="active-text">
-                            <div class="active-label">{$activeHeatmapVariable.label}</div>
-                            <div class="active-desc">{$activeHeatmapVariable.description}</div>
-                        </div>
-                    </div>
-                    <button class="clear-var-btn" on:click={clearVariable}>
-                        Limpiar
-                    </button>
-                </div>
-
                 {#if $activeHeatmapVariable.vizType === 'age_gap'}
-                    <!-- Age Gap Legend -->
+                    <!-- Age Gap Legend - directly below variable button -->
                     <div class="legend">
-                        <div class="legend-title">Brecha entre grupo dominante y el resto</div>
+                        <div class="legend-header">
+                            <div class="legend-title">Brecha Etaria por Manzana</div>
+                            <button class="clear-var-btn" on:click={clearVariable}>Limpiar</button>
+                        </div>
+                        <div class="legend-desc">
+                            Muestra la brecha entre el grupo etario dominante y el segundo grupo. El color indica si el segundo grupo es mayor o menor en edad.
+                        </div>
+                        <div class="legend-section-label">Segundo grupo es mayor en edad</div>
                         <div class="legend-items">
                             <div class="legend-row">
-                                <span class="legend-dot" style="background: #feca57;"></span>
-                                <span class="legend-text">Diferencia de 10-20%</span>
+                                <span class="legend-dot" style="background: #ffe0b2; border-color: rgba(255,224,178,0.5);"></span>
+                                <span class="legend-text">Brecha ≤ 5%</span>
                             </div>
                             <div class="legend-row">
-                                <span class="legend-dot" style="background: #ff9f43;"></span>
-                                <span class="legend-text">Diferencia de 20-30%</span>
+                                <span class="legend-dot" style="background: #ffb74d; border-color: rgba(255,183,77,0.5);"></span>
+                                <span class="legend-text">Brecha 5-10%</span>
                             </div>
                             <div class="legend-row">
-                                <span class="legend-dot" style="background: #ee5a24;"></span>
-                                <span class="legend-text">Diferencia mayor a 30%</span>
+                                <span class="legend-dot" style="background: #e65100; border-color: rgba(230,81,0,0.5);"></span>
+                                <span class="legend-text">Brecha > 10%</span>
                             </div>
                         </div>
-                        <div class="legend-note">
-                            Se muestra la diferencia porcentual entre el grupo etario dominante y el segundo grupo en cada manzana.
+                        <div class="legend-section-label">Segundo grupo es menor en edad</div>
+                        <div class="legend-items">
+                            <div class="legend-row">
+                                <span class="legend-dot" style="background: #bbdefb; border-color: rgba(187,222,251,0.5);"></span>
+                                <span class="legend-text">Brecha ≤ 5%</span>
+                            </div>
+                            <div class="legend-row">
+                                <span class="legend-dot" style="background: #42a5f5; border-color: rgba(66,165,245,0.5);"></span>
+                                <span class="legend-text">Brecha 5-10%</span>
+                            </div>
+                            <div class="legend-row">
+                                <span class="legend-dot" style="background: #1565c0; border-color: rgba(21,101,192,0.5);"></span>
+                                <span class="legend-text">Brecha > 10%</span>
+                            </div>
                         </div>
                     </div>
                 {:else if $activeHeatmapVariable.vizType === 'gradient'}
                     <!-- Average Age Gradient Legend -->
                     <div class="legend">
-                        <div class="legend-title">Edad Promedio</div>
+                        <div class="legend-header">
+                            <div class="legend-title">Edad Promedio</div>
+                            <button class="clear-var-btn" on:click={clearVariable}>Limpiar</button>
+                        </div>
                         <div class="legend-gradient-bar">
                             <div class="gradient-bar age-gradient"></div>
                             <div class="gradient-labels">
@@ -141,12 +144,30 @@
                                 <span>70+</span>
                             </div>
                         </div>
-                        <div class="legend-note">
+                        <div class="legend-desc">
                             Color más cálido indica mayor edad promedio en la manzana.
                         </div>
                     </div>
                 {:else}
                     <!-- Default Legend -->
+                    <div class="active-variable">
+                        <div class="active-header">
+                            <span class="active-icon">
+                                {#if $activeHeatmapVariable.icon.length < 5}
+                                    {$activeHeatmapVariable.icon}
+                                {:else}
+                                    <img src={$activeHeatmapVariable.icon} alt={$activeHeatmapVariable.label} />
+                                {/if}
+                            </span>
+                            <div class="active-text">
+                                <div class="active-label">{$activeHeatmapVariable.label}</div>
+                                <div class="active-desc">{$activeHeatmapVariable.description}</div>
+                            </div>
+                        </div>
+                        <button class="clear-var-btn" on:click={clearVariable}>
+                            Limpiar
+                        </button>
+                    </div>
                     <div class="legend">
                         <div class="legend-title">Visualización</div>
                         <div class="legend-info">
@@ -432,6 +453,31 @@
         line-height: 1.3;
     }
 
+    .legend-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 4px;
+    }
+
+    .legend-desc {
+        color: #999;
+        font-size: 0.7rem;
+        line-height: 1.4;
+        margin-bottom: 10px;
+    }
+
+    .legend-section-label {
+        color: #aaa;
+        font-size: 0.65rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        margin-top: 6px;
+        margin-bottom: 4px;
+        padding-left: 2px;
+    }
+
     .legend-note {
         color: #666;
         font-size: 0.65rem;
@@ -444,8 +490,8 @@
     .legend-items {
         display: flex;
         flex-direction: column;
-        gap: 6px;
-        margin-bottom: 8px;
+        gap: 5px;
+        margin-bottom: 4px;
     }
 
     .legend-row {

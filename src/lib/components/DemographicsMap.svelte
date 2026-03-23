@@ -32,6 +32,19 @@
     let selectedRing = null; // 'r500', 'r1k', or 'r3k'
     let prevDrawMode = false; // Track previous draw mode state to detect transitions
     let prevSearchLocation = null; // Track previous search location to detect changes
+    let tooltip = null; // Mapbox popup for hover tooltip
+    let modalData = null; // Feature data for click modal
+
+    // Age field config for tooltip/modal
+    const ageConfig = [
+        { field: 'n_edad_0_5', label: '0-5' },
+        { field: 'n_edad_6_13', label: '6-13' },
+        { field: 'n_edad_14_17', label: '14-17' },
+        { field: 'n_edad_18_24', label: '18-24' },
+        { field: 'n_edad_25_44', label: '25-44' },
+        { field: 'n_edad_45_59', label: '45-59' },
+        { field: 'n_edad_60_mas', label: '60+' }
+    ];
 
     // Throttle function for performance
     function throttle(func, limit) {
@@ -109,6 +122,23 @@
 
             // Activate lens by default (cursor-following mode)
             isLensActive.set(true);
+
+            // Tooltip on hover over heatmap and parcel layers
+            tooltip = new mapboxgl.Popup({
+                closeButton: false,
+                closeOnClick: false,
+                className: 'manzana-tooltip',
+                maxWidth: '280px'
+            });
+
+            map.on('mousemove', 'heatmap-fill', handleHeatmapHover);
+            map.on('mouseleave', 'heatmap-fill', () => tooltip.remove());
+            map.on('mousemove', 'parcels-fill-selected', handleParcelHover);
+            map.on('mouseleave', 'parcels-fill-selected', () => tooltip.remove());
+
+            // Click on heatmap or selected parcels for modal
+            map.on('click', 'heatmap-fill', handleManzanaClick);
+            map.on('click', 'parcels-fill-selected', handleManzanaClick);
         });
 
         // Mouse move - lens follows cursor
@@ -127,6 +157,85 @@
             if (map) map.remove();
         };
     });
+
+    // === TOOLTIP & MODAL HANDLERS ===
+    function buildAgeTooltip(props) {
+        const totalPop = props.n_per || 0;
+        if (totalPop === 0) return '<div class="tt-empty">Sin datos de población</div>';
+
+        const groups = ageConfig.map(g => ({
+            label: g.label,
+            count: props[g.field] || 0,
+            pct: ((props[g.field] || 0) / totalPop * 100).toFixed(1)
+        })).sort((a, b) => b.count - a.count);
+
+        const dominant = groups[0];
+        const second = groups[1];
+
+        let html = `<div class="tt-title">${props.comuna || 'Manzana'}</div>`;
+        html += `<div class="tt-pop">Población: <strong>${totalPop}</strong> | Edad prom: <strong>${(props.prom_edad || 0).toFixed(1)}</strong></div>`;
+        html += `<div class="tt-dominant">Grupo dominante: <strong>${dominant.label} años</strong> (${dominant.pct}%)</div>`;
+        if (second) {
+            const gap = (dominant.count - second.count) / totalPop * 100;
+            html += `<div class="tt-gap">Brecha con ${second.label}: <strong>${gap.toFixed(1)}%</strong></div>`;
+        }
+        html += '<div class="tt-bars">';
+        groups.forEach(g => {
+            const isDom = g.label === dominant.label;
+            html += `<div class="tt-bar-row">
+                <span class="tt-bar-label">${g.label}</span>
+                <div class="tt-bar-track"><div class="tt-bar-fill${isDom ? ' dominant' : ''}" style="width:${g.pct}%"></div></div>
+                <span class="tt-bar-pct">${g.pct}%</span>
+            </div>`;
+        });
+        html += '</div>';
+        return html;
+    }
+
+    function buildGeneralTooltip(props) {
+        const totalPop = props.n_per || 0;
+        let html = `<div class="tt-title">${props.comuna || 'Manzana'}</div>`;
+        html += `<div class="tt-pop">Población: <strong>${totalPop}</strong></div>`;
+        if (props.prom_edad) html += `<div class="tt-pop">Edad prom: <strong>${props.prom_edad.toFixed(1)}</strong></div>`;
+        html += `<div class="tt-pop">Hogares: <strong>${props.n_hog || 0}</strong> | Viviendas: <strong>${props.n_vp || 0}</strong></div>`;
+        return html;
+    }
+
+    function handleHeatmapHover(e) {
+        if (!e.features || e.features.length === 0) return;
+        map.getCanvas().style.cursor = 'pointer';
+        const props = e.features[0].properties;
+        const html = $activeHeatmapVariable?.vizType === 'age_gap' || $activeHeatmapVariable?.vizType === 'gradient'
+            ? buildAgeTooltip(props)
+            : buildGeneralTooltip(props);
+        tooltip.setLngLat(e.lngLat).setHTML(html).addTo(map);
+    }
+
+    function handleParcelHover(e) {
+        if (!e.features || e.features.length === 0 || $visualizationMode === 'heatmap') return;
+        map.getCanvas().style.cursor = 'pointer';
+        const props = e.features[0].properties;
+        tooltip.setLngLat(e.lngLat).setHTML(buildGeneralTooltip(props)).addTo(map);
+    }
+
+    function handleManzanaClick(e) {
+        if (!e.features || e.features.length === 0) return;
+        e.originalEvent.stopPropagation();
+        modalData = e.features[0].properties;
+    }
+
+    function closeModal() {
+        modalData = null;
+    }
+
+    function getAgeGroups(props) {
+        const totalPop = props.n_per || 0;
+        return ageConfig.map(g => ({
+            label: g.label,
+            count: props[g.field] || 0,
+            pct: totalPop > 0 ? ((props[g.field] || 0) / totalPop * 100).toFixed(1) : '0.0'
+        })).sort((a, b) => b.count - a.count);
+    }
 
     // NUEVAS FUNCIONES para manejo de dibujo
     function handleDrawCreate(e) {
@@ -271,30 +380,58 @@
             }
         });
 
-        // === LENS CIRCLE ===
+        // === LENS CIRCLE (glassmorphism) ===
         map.addSource('lens-circle', {
             type: 'geojson',
             data: turf.featureCollection([])
         });
 
+        // Glassmorphism fill — subtle frosted tint
         map.addLayer({
             id: 'lens-fill',
             type: 'fill',
             source: 'lens-circle',
             paint: {
-                'fill-color': '#000000',
-                'fill-opacity': 0.0 // Invisible fill, just for interaction
+                'fill-color': '#ffffff',
+                'fill-opacity': 0.06
             }
         });
 
+        // Outer glow ring
+        map.addLayer({
+            id: 'lens-outline-glow',
+            type: 'line',
+            source: 'lens-circle',
+            paint: {
+                'line-color': '#ffffff',
+                'line-width': 8,
+                'line-opacity': 0.08,
+                'line-blur': 6
+            }
+        });
+
+        // Main outline ring
         map.addLayer({
             id: 'lens-outline',
             type: 'line',
             source: 'lens-circle',
             paint: {
                 'line-color': '#ffffff',
-                'line-width': 2.5,
-                'line-opacity': 0.9
+                'line-width': 1.5,
+                'line-opacity': 0.7
+            }
+        });
+
+        // Inner highlight ring
+        map.addLayer({
+            id: 'lens-outline-inner',
+            type: 'line',
+            source: 'lens-circle',
+            paint: {
+                'line-color': '#ffffff',
+                'line-width': 0.5,
+                'line-opacity': 0.3,
+                'line-offset': -3
             }
         });
 
@@ -304,15 +441,28 @@
             data: turf.featureCollection([])
         });
 
+        // Center point glow
+        map.addLayer({
+            id: 'lens-center-glow',
+            type: 'circle',
+            source: 'lens-center',
+            paint: {
+                'circle-radius': 14,
+                'circle-color': '#f5c542',
+                'circle-opacity': 0.15,
+                'circle-blur': 1
+            }
+        });
+
         map.addLayer({
             id: 'lens-center-point',
             type: 'circle',
             source: 'lens-center',
             paint: {
-                'circle-radius': 6,
+                'circle-radius': 5,
                 'circle-color': '#f5c542',
-                'circle-stroke-width': 2,
-                'circle-stroke-color': '#ffffff'
+                'circle-stroke-width': 1.5,
+                'circle-stroke-color': 'rgba(255,255,255,0.8)'
             }
         });
 
@@ -694,12 +844,19 @@
         updateLens($lensCenter.lng, $lensCenter.lat);
     }
 
-    // React to lock state - change lens appearance
+    // React to lock state - change lens appearance (glassmorphism)
     $: if (mapReady && map && map.getLayer('lens-outline')) {
         map.setPaintProperty('lens-outline', 'line-color', lensLocked ? '#f5c542' : '#ffffff');
-        map.setPaintProperty('lens-outline', 'line-width', lensLocked ? 3.5 : 2.5);
-        map.setPaintProperty('lens-center-point', 'circle-color', lensLocked ? '#f5c542' : '#f5c542');
-        map.setPaintProperty('lens-center-point', 'circle-radius', lensLocked ? 8 : 6);
+        map.setPaintProperty('lens-outline', 'line-width', lensLocked ? 2 : 1.5);
+        map.setPaintProperty('lens-outline', 'line-opacity', lensLocked ? 0.9 : 0.7);
+        map.setPaintProperty('lens-outline-glow', 'line-color', lensLocked ? '#f5c542' : '#ffffff');
+        map.setPaintProperty('lens-outline-glow', 'line-opacity', lensLocked ? 0.15 : 0.08);
+        map.setPaintProperty('lens-outline-inner', 'line-color', lensLocked ? '#f5c542' : '#ffffff');
+        map.setPaintProperty('lens-fill', 'fill-color', lensLocked ? '#f5c542' : '#ffffff');
+        map.setPaintProperty('lens-fill', 'fill-opacity', lensLocked ? 0.08 : 0.06);
+        map.setPaintProperty('lens-center-glow', 'circle-color', lensLocked ? '#f5c542' : '#f5c542');
+        map.setPaintProperty('lens-center-glow', 'circle-opacity', lensLocked ? 0.25 : 0.15);
+        map.setPaintProperty('lens-center-point', 'circle-radius', lensLocked ? 6 : 5);
     }
 
     // React to address search location changes - only when searchLocation actually changes
@@ -725,13 +882,10 @@
         if ($drawMode) {
             // Activar modo de dibujo
             draw.changeMode('draw_polygon');
-            // Ocultar el lente
-            if (map.getLayer('lens-outline')) {
-                map.setLayoutProperty('lens-outline', 'visibility', 'none');
-            }
-            if (map.getLayer('lens-center-point')) {
-                map.setLayoutProperty('lens-center-point', 'visibility', 'none');
-            }
+            // Ocultar todas las capas del lente
+            ['lens-outline', 'lens-outline-glow', 'lens-outline-inner', 'lens-fill', 'lens-center-point', 'lens-center-glow'].forEach(id => {
+                if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
+            });
             // Limpiar lente
             clearLensVisuals();
             lensLocked = false;
@@ -740,13 +894,10 @@
             draw.changeMode('simple_select');
             draw.deleteAll();
             drawnPolygon.set(null);
-            // Mostrar el lente
-            if (map.getLayer('lens-outline')) {
-                map.setLayoutProperty('lens-outline', 'visibility', 'visible');
-            }
-            if (map.getLayer('lens-center-point')) {
-                map.setLayoutProperty('lens-center-point', 'visibility', 'visible');
-            }
+            // Mostrar todas las capas del lente
+            ['lens-outline', 'lens-outline-glow', 'lens-outline-inner', 'lens-fill', 'lens-center-point', 'lens-center-glow'].forEach(id => {
+                if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible');
+            });
             // Limpiar selección only when exiting draw mode
             selectedFeatures.set([]);
             updateLensLayer([]);
@@ -822,6 +973,7 @@
         // Reset to default solid color for standard variables
         map.setPaintProperty('heatmap-fill', 'fill-color', '#ff6b6b');
         map.setPaintProperty('heatmap-fill', 'fill-opacity', 0.75);
+        map.setLayoutProperty('heatmap-outline', 'visibility', 'visible');
 
         // Determine which manzanas have this variable as dominant
         const dominantFeatures = parcelsData.features
@@ -911,60 +1063,80 @@
     function processAgeGapHeatmap(variable) {
         const ageFields = variable.ageFields;
 
+        // Hide outline for this visualization
+        map.setLayoutProperty('heatmap-outline', 'visibility', 'none');
+
         const features = parcelsData.features
             .map(f => {
                 const props = f.properties;
                 const totalPop = props.n_per || 0;
                 if (totalPop === 0) return null;
 
-                // Get percentages for each age group
-                const percentages = ageFields.map(field => (props[field] || 0) / totalPop * 100);
+                // Get percentages for each age group with their indices
+                const groups = ageFields.map((field, idx) => ({
+                    pct: (props[field] || 0) / totalPop * 100,
+                    idx
+                }));
 
-                // Sort descending to find dominant and second
-                const sorted = [...percentages].sort((a, b) => b - a);
-                const dominantPct = sorted[0];
-                const secondPct = sorted[1] || 0;
-                const gap = dominantPct - secondPct;
+                // Sort descending by percentage
+                const sorted = [...groups].sort((a, b) => b.pct - a.pct);
+                const dominant = sorted[0];
+                const second = sorted[1];
 
-                // Find which group is dominant
-                const dominantIdx = percentages.indexOf(dominantPct);
-                const dominantLabel = variable.ageLabels[dominantIdx];
+                if (!second || dominant.pct === 0) return null;
 
-                // Categorize the gap
-                let gapCategory;
-                if (gap >= 30) gapCategory = 3;
-                else if (gap >= 20) gapCategory = 2;
-                else if (gap >= 10) gapCategory = 1;
-                else return null; // Gap < 10%, not shown
+                const gap = dominant.pct - second.pct;
+
+                // Direction: is the second-place group older or younger than dominant?
+                // Positive direction = second group is older, negative = younger
+                const direction = second.idx > dominant.idx ? 'older' : 'younger';
+
+                // Gap tier: 1 = ≤5%, 2 = 5-10%, 3 = >10%
+                let tier;
+                if (gap <= 5) tier = 1;
+                else if (gap <= 10) tier = 2;
+                else tier = 3;
+
+                // Encode: positive = runner-up is older, negative = runner-up is younger
+                const gapCode = direction === 'older' ? tier : -tier;
 
                 return {
                     ...f,
                     properties: {
                         ...props,
-                        gap_category: gapCategory,
+                        gap_code: gapCode,
                         gap_value: Math.round(gap),
-                        dominant_group: dominantLabel
+                        dominant_group: variable.ageLabels[dominant.idx],
+                        second_group: variable.ageLabels[second.idx]
                     }
                 };
             })
             .filter(f => f !== null);
 
-        // Set data-driven paint for gap categories
+        // Data-driven paint: warm = runner-up is older, cool = runner-up is younger
         map.setPaintProperty('heatmap-fill', 'fill-color', [
             'match',
-            ['get', 'gap_category'],
-            1, '#feca57',  // 10-20% gap - yellow
-            2, '#ff9f43',  // 20-30% gap - orange
-            3, '#ee5a24',  // >30% gap - red
-            '#feca57'      // fallback
+            ['get', 'gap_code'],
+            // Runner-up is OLDER (warm amber tones)
+            1, '#ffe0b2',   // ≤5% gap - light amber
+            2, '#ffb74d',   // 5-10% gap - medium amber
+            3, '#e65100',   // >10% gap - deep amber
+            // Runner-up is YOUNGER (cool blue tones)
+            -1, '#bbdefb',  // ≤5% gap - light blue
+            -2, '#42a5f5',  // 5-10% gap - medium blue
+            -3, '#1565c0',  // >10% gap - deep blue
+            '#9e9e9e'       // fallback - neutral
         ]);
         map.setPaintProperty('heatmap-fill', 'fill-opacity', 0.8);
 
         map.getSource('heatmap-parcels').setData(turf.featureCollection(features));
-        console.log(`Age gap heatmap: ${features.length} manzanas with gap >= 10%`);
+        console.log(`Age gap heatmap: ${features.length} manzanas`);
     }
 
     function processGradientHeatmap(variable) {
+        // Hide outline for this visualization
+        map.setLayoutProperty('heatmap-outline', 'visibility', 'none');
+
         // Filter manzanas with valid prom_edad
         const features = parcelsData.features
             .filter(f => {
@@ -1188,6 +1360,141 @@
             </div>
         </div>
     {/if}
+
+    <!-- Manzana Detail Modal -->
+    {#if modalData}
+        <div class="modal-overlay" on:click={closeModal} on:keydown={(e) => e.key === 'Escape' && closeModal()} role="dialog" tabindex="-1">
+            <div class="modal-content" on:click|stopPropagation role="document">
+                <div class="modal-header">
+                    <div>
+                        <h2>{modalData.comuna || 'Manzana'}</h2>
+                        <span class="modal-subtitle">Distrito: {modalData.distrito || '—'} | Zona: {modalData.cod_zona || '—'}</span>
+                    </div>
+                    <button class="modal-close" on:click={closeModal}>✕</button>
+                </div>
+
+                <div class="modal-body">
+                    <!-- Quick stats row -->
+                    <div class="modal-stats">
+                        <div class="modal-stat">
+                            <span class="stat-value">{modalData.n_per || 0}</span>
+                            <span class="stat-label">Población</span>
+                        </div>
+                        <div class="modal-stat">
+                            <span class="stat-value">{(modalData.prom_edad || 0).toFixed(1)}</span>
+                            <span class="stat-label">Edad Prom.</span>
+                        </div>
+                        <div class="modal-stat">
+                            <span class="stat-value">{modalData.n_hog || 0}</span>
+                            <span class="stat-label">Hogares</span>
+                        </div>
+                        <div class="modal-stat">
+                            <span class="stat-value">{modalData.n_vp || 0}</span>
+                            <span class="stat-label">Viviendas</span>
+                        </div>
+                    </div>
+
+                    <!-- Age groups -->
+                    <div class="modal-section">
+                        <h3>Grupos Etarios</h3>
+                        <div class="modal-bars">
+                            {#each getAgeGroups(modalData) as group}
+                                <div class="modal-bar-row">
+                                    <span class="bar-label">{group.label}</span>
+                                    <div class="bar-track">
+                                        <div class="bar-fill" style="width: {group.pct}%; background: {group === getAgeGroups(modalData)[0] ? '#f5c542' : 'rgba(255,255,255,0.3)'}"></div>
+                                    </div>
+                                    <span class="bar-value">{group.count} ({group.pct}%)</span>
+                                </div>
+                            {/each}
+                        </div>
+                    </div>
+
+                    <!-- Gender -->
+                    <div class="modal-section">
+                        <h3>Género</h3>
+                        <div class="modal-gender">
+                            <div class="gender-item">
+                                <span class="gender-val">{modalData.n_hombres || 0}</span>
+                                <span class="gender-lbl">Hombres</span>
+                            </div>
+                            <div class="gender-bar-track">
+                                {#if (modalData.n_per || 0) > 0}
+                                    <div class="gender-bar male" style="width: {((modalData.n_hombres || 0) / modalData.n_per * 100).toFixed(1)}%"></div>
+                                    <div class="gender-bar female" style="width: {((modalData.n_mujeres || 0) / modalData.n_per * 100).toFixed(1)}%"></div>
+                                {/if}
+                            </div>
+                            <div class="gender-item right">
+                                <span class="gender-val">{modalData.n_mujeres || 0}</span>
+                                <span class="gender-lbl">Mujeres</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Employment -->
+                    <div class="modal-section">
+                        <h3>Empleo</h3>
+                        <div class="modal-stats compact">
+                            <div class="modal-stat small">
+                                <span class="stat-value ok">{modalData.n_ocupado || 0}</span>
+                                <span class="stat-label">Ocupados</span>
+                            </div>
+                            <div class="modal-stat small">
+                                <span class="stat-value warn">{modalData.n_desocupado || 0}</span>
+                                <span class="stat-label">Desocupados</span>
+                            </div>
+                            <div class="modal-stat small">
+                                <span class="stat-value">{modalData.n_fuera_fuerza_trabajo || 0}</span>
+                                <span class="stat-label">Inactivos</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Housing -->
+                    <div class="modal-section">
+                        <h3>Vivienda</h3>
+                        <div class="modal-stats compact">
+                            <div class="modal-stat small">
+                                <span class="stat-value">{modalData.n_tipo_viv_casa || 0}</span>
+                                <span class="stat-label">Casas</span>
+                            </div>
+                            <div class="modal-stat small">
+                                <span class="stat-value">{modalData.n_tipo_viv_depto || 0}</span>
+                                <span class="stat-label">Deptos</span>
+                            </div>
+                            <div class="modal-stat small">
+                                <span class="stat-value">{modalData.n_vp_ocupada || 0}</span>
+                                <span class="stat-label">Ocupadas</span>
+                            </div>
+                            <div class="modal-stat small">
+                                <span class="stat-value">{modalData.n_vp_desocupada || 0}</span>
+                                <span class="stat-label">Desocupadas</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Identity -->
+                    <div class="modal-section">
+                        <h3>Identidad y Conectividad</h3>
+                        <div class="modal-stats compact">
+                            <div class="modal-stat small">
+                                <span class="stat-value">{modalData.n_inmigrantes || 0}</span>
+                                <span class="stat-label">Inmigrantes</span>
+                            </div>
+                            <div class="modal-stat small">
+                                <span class="stat-value">{modalData.n_pueblos_orig || 0}</span>
+                                <span class="stat-label">Pueblos Orig.</span>
+                            </div>
+                            <div class="modal-stat small">
+                                <span class="stat-value">{modalData.n_internet || 0}</span>
+                                <span class="stat-label">C/ Internet</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {/if}
 </div>
 
 <style>
@@ -1256,5 +1563,339 @@
         color: #aaa;
         font-size: 0.65rem;
         padding: 0 2px;
+    }
+
+    /* === TOOLTIP STYLES === */
+    :global(.manzana-tooltip .mapboxgl-popup-content) {
+        background: rgba(15, 20, 30, 0.95);
+        backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        padding: 12px 14px;
+        color: #fff;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    }
+
+    :global(.manzana-tooltip .mapboxgl-popup-tip) {
+        border-top-color: rgba(15, 20, 30, 0.95);
+    }
+
+    :global(.tt-title) {
+        font-weight: 700;
+        font-size: 0.8rem;
+        margin-bottom: 4px;
+        color: #f5c542;
+    }
+
+    :global(.tt-pop) {
+        font-size: 0.7rem;
+        color: #bbb;
+        margin-bottom: 3px;
+    }
+
+    :global(.tt-pop strong) {
+        color: #fff;
+    }
+
+    :global(.tt-dominant) {
+        font-size: 0.7rem;
+        color: #ccc;
+        margin: 6px 0 2px;
+        padding-top: 6px;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    :global(.tt-dominant strong) {
+        color: #f5c542;
+    }
+
+    :global(.tt-gap) {
+        font-size: 0.7rem;
+        color: #aaa;
+        margin-bottom: 6px;
+    }
+
+    :global(.tt-gap strong) {
+        color: #fff;
+    }
+
+    :global(.tt-bars) {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        margin-top: 4px;
+    }
+
+    :global(.tt-bar-row) {
+        display: grid;
+        grid-template-columns: 30px 1fr 36px;
+        align-items: center;
+        gap: 6px;
+    }
+
+    :global(.tt-bar-label) {
+        font-size: 0.6rem;
+        color: #999;
+    }
+
+    :global(.tt-bar-track) {
+        height: 6px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 3px;
+        overflow: hidden;
+    }
+
+    :global(.tt-bar-fill) {
+        height: 100%;
+        background: rgba(255, 255, 255, 0.35);
+        border-radius: 3px;
+        transition: width 0.2s ease;
+    }
+
+    :global(.tt-bar-fill.dominant) {
+        background: #f5c542;
+    }
+
+    :global(.tt-bar-pct) {
+        font-size: 0.6rem;
+        color: #aaa;
+        text-align: right;
+    }
+
+    :global(.tt-empty) {
+        color: #666;
+        font-size: 0.7rem;
+        font-style: italic;
+    }
+
+    /* === MODAL STYLES === */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(4px);
+        z-index: 9000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .modal-content {
+        background: rgba(20, 25, 35, 0.97);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 16px;
+        width: 480px;
+        max-width: 90vw;
+        max-height: 85vh;
+        overflow-y: auto;
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+    }
+
+    .modal-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        padding: 20px 24px 16px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .modal-header h2 {
+        margin: 0;
+        color: #fff;
+        font-size: 1.1rem;
+        font-weight: 700;
+    }
+
+    .modal-subtitle {
+        color: #888;
+        font-size: 0.7rem;
+        margin-top: 2px;
+        display: block;
+    }
+
+    .modal-close {
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        color: #aaa;
+        font-size: 1rem;
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+        flex-shrink: 0;
+    }
+
+    .modal-close:hover {
+        background: rgba(255, 255, 255, 0.2);
+        color: #fff;
+    }
+
+    .modal-body {
+        padding: 16px 24px 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .modal-stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+    }
+
+    .modal-stats.compact {
+        grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+        gap: 8px;
+    }
+
+    .modal-stat {
+        text-align: center;
+        padding: 12px 8px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .modal-stat.small {
+        padding: 8px 6px;
+    }
+
+    .stat-value {
+        display: block;
+        font-size: 1.3rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 2px;
+    }
+
+    .modal-stat.small .stat-value {
+        font-size: 1rem;
+    }
+
+    .stat-value.ok {
+        color: #4ade80;
+    }
+
+    .stat-value.warn {
+        color: #ef4444;
+    }
+
+    .stat-label {
+        font-size: 0.65rem;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+
+    .modal-section h3 {
+        margin: 0 0 10px;
+        color: #f5c542;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .modal-bars {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .modal-bar-row {
+        display: grid;
+        grid-template-columns: 40px 1fr 80px;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .bar-label {
+        font-size: 0.75rem;
+        color: #aaa;
+    }
+
+    .bar-track {
+        height: 8px;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+
+    .bar-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.3s ease;
+    }
+
+    .bar-value {
+        font-size: 0.7rem;
+        color: #ccc;
+        text-align: right;
+    }
+
+    .modal-gender {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .gender-item {
+        text-align: center;
+    }
+
+    .gender-item.right {
+        text-align: center;
+    }
+
+    .gender-val {
+        display: block;
+        font-size: 1rem;
+        font-weight: 700;
+        color: #fff;
+    }
+
+    .gender-lbl {
+        font-size: 0.65rem;
+        color: #888;
+    }
+
+    .gender-bar-track {
+        display: flex;
+        height: 10px;
+        border-radius: 5px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .gender-bar.male {
+        background: #42a5f5;
+    }
+
+    .gender-bar.female {
+        background: #ec407a;
+    }
+
+    /* Modal scrollbar */
+    .modal-content::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .modal-content::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .modal-content::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 3px;
     }
 </style>
