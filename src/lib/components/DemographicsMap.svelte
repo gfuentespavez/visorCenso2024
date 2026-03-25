@@ -11,7 +11,6 @@
         isLensActive,
         selectedFeatures,
         showParcels,
-        showDensity,
         totalPopulation,
         selectedRadiusRing,
         visualizationMode,

@@ -22,7 +22,6 @@ import flameIcon from '$lib/assets/icons/flame-svgrepo-com.svg';
 export const lensCenter = writable(null); // { lng, lat }
 export const lensRadius = writable(0.5); // km
 export const isLensActive = writable(false);
-export const isDragging = writable(false);
 export const drawMode = writable(false); // true = dibujar polígono
 export const drawnPolygon = writable(null); // GeoJSON del polígono dibujado
 
