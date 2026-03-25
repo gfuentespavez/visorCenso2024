@@ -1,5 +1,5 @@
 <script>
-    import { onMount, onDestroy } from 'svelte';
+    import { onMount } from 'svelte';
     import { PUBLIC_MAPBOX_TOKEN } from '$env/static/public';
     import mapboxgl from 'mapbox-gl';
     import MapboxDraw from '@mapbox/mapbox-gl-draw';
@@ -10,8 +10,6 @@
         lensRadius,
         isLensActive,
         selectedFeatures,
-        showParcels,
-        totalPopulation,
         selectedRadiusRing,
         visualizationMode,
         activeHeatmapVariable,
@@ -758,10 +756,8 @@
         if (!mapReady || !parcelsData) return;
 
         const point = [lng, lat];
-        const radiusKm = $lensRadius;
-
         // Create circle for lens
-        const circle = turf.circle(point, radiusKm, { units: 'kilometers', steps: 64 });
+        const circle = turf.circle(point, $lensRadius, { units: 'kilometers', steps: 64 });
 
         // Update lens circle visualization
         map.getSource('lens-circle').setData(circle);
@@ -1194,7 +1190,7 @@
         console.log(`Heating gap heatmap: ${features.length} manzanas`);
     }
 
-    function processGradientHeatmap(variable) {
+    function processGradientHeatmap(_variable) {
         // Hide outline for this visualization
         map.setLayoutProperty('heatmap-outline', 'visibility', 'none');
 
@@ -1580,7 +1576,7 @@
     }
 
     :global(.mapboxgl-canvas) {
-        cursor: crosshair !important;
+        cursor: crosshair;
     }
 
     .map-legend {
